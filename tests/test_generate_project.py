@@ -148,6 +148,30 @@ class GenerateProjectTests(unittest.TestCase):
         self.assertIn("`demo-`", (project / ".claude/CLAUDE.md").read_text())
         self.assertFalse((project / "AGENTS.md").exists())
 
+    def test_prefix_compatibility_with_older_instructions_and_templates(self):
+        project = self.work / "older project"
+        project.mkdir()
+        (project / "AGENTS.md").write_text("# Existing\n- Stack: node.\nCustom instructions.\n")
+        # The folder may follow other flags, as in the Claude retrofit interface.
+        self.generate("--codex-only", "--prefix", "vcr-", str(project))
+        instructions = (project / "AGENTS.md").read_text()
+        self.assertIn("`vcr-`", instructions)
+        self.assertIn("Custom instructions.", instructions)
+        self.assertEqual(instructions.count("Resource prefix:"), 1)
+        before = self.snapshot(project)
+        self.generate("--codex-only", "--prefix", "vcr", str(project))
+        self.assertEqual(before, self.snapshot(project))
+        template = self.work / "old-template"
+        template.mkdir()
+        (template / "AGENTS.md.tpl").write_text("# __PROJECT__\n- Stack: __TYPE__.\n__COMMANDS__\n")
+        other = self.work / "old-template-project"
+        other.mkdir()
+        self.generate("--codex-only", str(other), "--codex-template", str(template), "--prefix", "vcr")
+        self.assertIn("`vcr-`", (other / "AGENTS.md").read_text())
+        for prefix in ("VCR", "Bad!", "a123456789012", "1abc"):
+            self.generate("--project", "invalid", "--no-github", "--prefix", prefix, ok=False)
+            self.assertFalse((self.work / "invalid").exists())
+
 
 if __name__ == "__main__":
     unittest.main()
