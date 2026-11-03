@@ -226,7 +226,8 @@ claimed generator architecture or the formula's installed runtime.
   on invalid new-project input, and the original root-Claude prefix defect.
 - Previous packaging validation loaded the formula with Homebrew libraries
   and exercised its install/test blocks using the actual release archive in
-  a temporary prefix. The 2.1.2 archive receives the same check when published.
+  a temporary prefix. The 2.1.2 archive passed the same check, including a handwritten
+  instruction file without a Stack line.
 - No real GitHub publication, cloud resources, real secrets or
   sibling project services were used for the analysis experiments.
 

@@ -133,3 +133,5 @@ backups/*.json
 backups/*.md
 specs/*.json
 logs/
+# Local reference material for article drafting
+/input/

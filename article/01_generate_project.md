@@ -16,6 +16,22 @@ Claude added support for its workspace files. Extending the same project for
 Codex exposed a useful distinction: the workflow can be shared, but each
 agent needs context in the locations it actually discovers.
 
+## How the project got here
+
+This follows the same line of work as my July 2024 article, *Automating
+Docker Compose project setup and Git Integration*. That version concentrated
+on creating the project structure and getting the first commit onto GitHub.
+
+In June 2025, *End-to-End Project Bootstrapping: Quality Checks Meet Terraform
+Automation* connected scaffolding with `sanity_check` and Terraform setup.
+The following Packer article extended the workflow into container builds and
+scanning. Those were adjacent tools in a larger workflow; the current
+`generate_project` command does not itself implement that entire pipeline.
+
+Adding Claude and Codex support extends the repository-creation step again.
+Alongside the source files and quality checks, it now prepares the context a
+coding agent needs when it opens the project.
+
 ## Start with a local project
 
 Here is a small Node example:
