@@ -18,6 +18,11 @@ generate_project --project demo-app --type node --no-github
 generate_project --project claude-app --type python --no-codex
 ```
 
+In retrofit mode, `--project <dir>` is an alias for the positional target
+directory. Do not supply both. The target must already exist; missing targets
+are refused before any ignore files or assistant files are changed. With no
+target argument, retrofit still defaults to the current directory.
+
 Retrofit adds missing files and repairs broken skill symlinks or file stubs.
 Existing skill directories and config are preserved; it is not an upgrade that
 overwrites installed skills. Existing instructions are preserved except for

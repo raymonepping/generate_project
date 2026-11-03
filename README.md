@@ -59,7 +59,14 @@ and MCP settings. Claude hooks and agents require translation before use in Code
 
 ```sh
 generate_project --codex-only ./existing-project --type terraform --prefix demo
+# Equivalent target selection:
+generate_project --project existing-project --codex-only --type terraform --prefix demo
 ```
+
+With `--codex-only` or `--claude-only`, `--project` selects an existing
+directory. Missing directories and conflicting target arguments are rejected
+before changing files. To create a new Codex project without Claude, use
+`--project <name> --no-claude` instead.
 
 The template defaults to `~/.config/generate_project/codex/` if present, then
 the bundled `tpl/codex/`. Override it with `GENERATE_PROJECT_CODEX_TEMPLATE`

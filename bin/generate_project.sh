@@ -10,6 +10,7 @@ Usage:
                    [--claude-template <dir>] [--no-codex] [--codex-template <dir>]
   generate_project --claude-only [<existing-project-dir>] [--prefix <prefix>]
   generate_project --codex-only [<existing-project-dir>] [--type <type>] [--prefix <prefix>]
+  generate_project --project <existing-project-dir> --codex-only [--prefix <prefix>]
 
 Options:
   --project <name>          Create ./<name>, scaffold it, commit, and publish it on GitHub.
@@ -28,6 +29,8 @@ Options:
                             then bundled tpl/codex; override: $GENERATE_PROJECT_CODEX_TEMPLATE).
   --codex-only [<dir>]      Add or repair Codex support in an existing project.
                             Preserves existing files; --type sets starter commands.
+                            With --project <dir>, retrofit that existing directory.
+                            A positional directory and --project cannot be combined.
   -h, --help                Show this help.
 
 The .claude folder gets agents/, skills/, settings.local.json and a starter CLAUDE.md.
@@ -54,8 +57,10 @@ USE_CLAUDE=true
 USE_CODEX=true
 CODEX_ONLY=false
 CODEX_ONLY_DIR="."
+CODEX_ONLY_DIR_SET=false
 CLAUDE_ONLY=false
 CLAUDE_ONLY_DIR="."
+CLAUDE_ONLY_DIR_SET=false
 PREFIX=""
 CLAUDE_TEMPLATE="${GENERATE_PROJECT_CLAUDE_TEMPLATE:-$HOME/.config/generate_project/claude}"
 
@@ -79,20 +84,20 @@ while [[ $# -gt 0 ]]; do
     --codex-template) CODEX_TEMPLATE="${2:-}"; shift 2 || { usage; exit 1; } ;;
     --codex-only)
       CODEX_ONLY=true
-      if [[ -n "${2:-}" && "${2:0:1}" != "-" ]]; then CODEX_ONLY_DIR="$2"; shift 2; else shift; fi
+      if [[ -n "${2:-}" && "${2:0:1}" != "-" ]]; then CODEX_ONLY_DIR="$2"; CODEX_ONLY_DIR_SET=true; shift 2; else shift; fi
       ;;
     --claude-template) CLAUDE_TEMPLATE="${2:-}"; shift 2 || { usage; exit 1; } ;;
     --claude-only)
       CLAUDE_ONLY=true
-      if [[ -n "${2:-}" && "${2:0:1}" != "-" ]]; then CLAUDE_ONLY_DIR="$2"; shift 2; else shift; fi
+      if [[ -n "${2:-}" && "${2:0:1}" != "-" ]]; then CLAUDE_ONLY_DIR="$2"; CLAUDE_ONLY_DIR_SET=true; shift 2; else shift; fi
       ;;
     -h|--help) usage; exit 0 ;;
     *)
       # In --claude-only mode the project folder may follow other options.
-      if [[ "$CLAUDE_ONLY" == true && "$CLAUDE_ONLY_DIR" == "." && "${1:0:1}" != "-" ]]; then
-        CLAUDE_ONLY_DIR="$1"; shift
-      elif [[ "$CODEX_ONLY" == true && "$CODEX_ONLY_DIR" == "." && "${1:0:1}" != "-" ]]; then
-        CODEX_ONLY_DIR="$1"; shift
+      if [[ "$CLAUDE_ONLY" == true && "$CLAUDE_ONLY_DIR_SET" == false && "${1:0:1}" != "-" ]]; then
+        CLAUDE_ONLY_DIR="$1"; CLAUDE_ONLY_DIR_SET=true; shift
+      elif [[ "$CODEX_ONLY" == true && "$CODEX_ONLY_DIR_SET" == false && "${1:0:1}" != "-" ]]; then
+        CODEX_ONLY_DIR="$1"; CODEX_ONLY_DIR_SET=true; shift
       else
         echo "❌ Unknown argument: $1"; usage; exit 1
       fi
@@ -108,6 +113,24 @@ if [[ "$CODEX_ONLY" == true && "$USE_CODEX" == false ]]; then
   echo "❌ --codex-only cannot be combined with --no-codex."
   exit 1
 fi
+# In retrofit mode, --project names the existing target, never the parent cwd.
+# Reject two target arguments, even an explicit ".", rather than guessing.
+if [[ -n "$PROJECT_NAME" ]]; then
+  if [[ "$CODEX_ONLY" == true ]]; then
+    if [[ "$CODEX_ONLY_DIR_SET" == true ]]; then
+      echo "❌ Use either --project <dir> or --codex-only <dir>, not both."
+      exit 1
+    fi
+    CODEX_ONLY_DIR="$PROJECT_NAME"
+  elif [[ "$CLAUDE_ONLY" == true ]]; then
+    if [[ "$CLAUDE_ONLY_DIR_SET" == true ]]; then
+      echo "❌ Use either --project <dir> or --claude-only <dir>, not both."
+      exit 1
+    fi
+    CLAUDE_ONLY_DIR="$PROJECT_NAME"
+  fi
+fi
+
 # Custom template paths may be relative to the invocation directory.
 if [[ -d "$CODEX_TEMPLATE" ]]; then CODEX_TEMPLATE="$(cd "$CODEX_TEMPLATE" && pwd)"; fi
 
@@ -310,6 +333,16 @@ install_codex_dir() {
   fi
   echo "🤖 Codex ready in $dir ($added added, $repaired repaired)"
 }
+
+# Reject missing retrofit targets before changing global or project files.
+if [[ "$CODEX_ONLY" == true && ! -d "$CODEX_ONLY_DIR" ]]; then
+  echo "❌ Not a directory: $CODEX_ONLY_DIR"
+  exit 1
+fi
+if [[ "$CLAUDE_ONLY" == true && ! -d "$CLAUDE_ONLY_DIR" ]]; then
+  echo "❌ Not a directory: $CLAUDE_ONLY_DIR"
+  exit 1
+fi
 
 # Keep the global excludes file in step, so every repo on this machine ignores AI tooling.
 if [[ -f "$DEFAULT_GITIGNORE" ]]; then

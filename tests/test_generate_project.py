@@ -172,6 +172,35 @@ class GenerateProjectTests(unittest.TestCase):
             self.generate("--project", "invalid", "--no-github", "--prefix", prefix, ok=False)
             self.assertFalse((self.work / "invalid").exists())
 
+    def test_project_flag_selects_existing_retrofit_target(self):
+        for mode, filename in (("--codex-only", "AGENTS.md"), ("--claude-only", ".claude/CLAUDE.md")):
+            with self.subTest(mode=mode):
+                name = "target-" + mode[2:]
+                target = self.work / name
+                target.mkdir()
+                (target / "keep.txt").write_text("existing content")
+                self.generate("--project", name, mode, "--prefix", "vcr")
+                self.assertIn("`vcr-`", (target / filename).read_text())
+                self.assertEqual((target / "keep.txt").read_text(), "existing content")
+                self.assertFalse((target / ".git").exists())
+                self.assertFalse((self.work / filename).exists())
+                before = self.snapshot(self.work)
+                self.generate(mode, "--prefix", "vcr", "--project", name)
+                self.assertEqual(before, self.snapshot(self.work))
+
+    def test_invalid_retrofit_targets_have_no_side_effects(self):
+        target = self.work / "existing"
+        target.mkdir()
+        for mode in ("--codex-only", "--claude-only"):
+            for args in (("--project", "missing", mode),
+                         ("--project", "existing", mode, "."),
+                         (mode, "existing", "--project", "existing")):
+                with self.subTest(args=args):
+                    before = self.snapshot(self.work)
+                    self.generate(*args, "--prefix", "vcr", ok=False)
+                    self.assertEqual(before, self.snapshot(self.work))
+                    self.assertFalse((self.work / "missing").exists())
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -5,9 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.1.1] - 2026-11-03
 
 ### Fixed
+- Honor `--project <dir>` in Codex and Claude retrofit modes instead of silently
+  modifying the current directory. Reject ambiguous or missing targets before
+  changing any files.
 - Correct the Homebrew formula to install generate_project and its bundled Codex
   templates from the verified v2.1.0 archive, instead of tfc_controller.
 
