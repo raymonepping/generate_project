@@ -1,36 +1,73 @@
-# One Command, Two Coding Agents: Building a Project Generator for Claude Code and Codex
+# Why I Built generate_project: From Repeatable Setup to Claude Code and Codex
 
-*A small Bash tool for starting repositories with useful project context—and
-the practical lessons that appeared when existing projects started using it.*
+*The same idea behind my Docker Compose, Terraform, container-build and
+folder-structure articles now extends to the context coding agents need.*
 
-A new repository needs more than an entry point and a README when coding
-agents are part of the workflow. The next session also needs to know which
-checks matter, how the project is organized, and which resources belong to it.
+Create a directory. Copy the ignore files. Add a README and a licence.
+Initialize Git, name the branch, create the GitHub repository and push the
+first commit. Then remember the formatting checks, the container exclusions
+and the documentation that explain what belongs where.
 
-I wanted to stop rebuilding that setup by hand. The result is
-[`generate_project`](https://github.com/raymonepping/generate_project), a Bash
-CLI that scaffolds a project, prepares local assistant context, makes the
-first commit, and can publish the repository to GitHub.
+Each step is small. Together, they are a setup routine I kept repeating
+across infrastructure experiments and application projects. I wanted that
+routine written down in something I could run, inspect and improve.
 
-Claude added support for its workspace files. Extending the same project for
-Codex exposed a useful distinction: the workflow can be shared, but each
-agent needs context in the locations it actually discovers.
+That is why I built
+[`generate_project`](https://github.com/raymonepping/generate_project). It
+turns my preferred starting sequence into a Bash command, while leaving
+room for the different things a Terraform project, a Node application or a
+Go CLI actually needs.
 
-## How the project got here
+Claude Code and Codex are the latest addition to that sequence. Once a coding
+agent joins the workflow, a repository also needs discoverable instructions:
+which checks matter, where the project context lives, and which resources
+belong to this project. Preparing those instructions belongs alongside the
+other setup steps I do not want to reconstruct every time.
 
-This follows the same line of work as my July 2024 article, *Automating
-Docker Compose project setup and Git Integration*. That version concentrated
-on creating the project structure and getting the first commit onto GitHub.
+## Four earlier articles explain the motivation
 
-In June 2025, *End-to-End Project Bootstrapping: Quality Checks Meet Terraform
-Automation* connected scaffolding with `sanity_check` and Terraform setup.
-The following Packer article extended the workflow into container builds and
-scanning. Those were adjacent tools in a larger workflow; the current
-`generate_project` command does not itself implement that entire pipeline.
+In *Automating Docker Compose project setup and Git Integration*
+(July 31, 2024), I focused on the repetitive mechanics: create a consistent
+layout, initialize the repository and connect it to GitHub. The separate
+commit helper handled later changes. The useful boundary was already there:
+project creation and ongoing development need different operations.
 
-Adding Claude and Codex support extends the repository-creation step again.
-Alongside the source files and quality checks, it now prepares the context a
-coding agent needs when it opens the project.
+*End-to-End Project Bootstrapping: Quality Checks Meet Terraform Automation*
+(June 27, 2025) added another reason to automate the start. A consistent
+folder structure is only part of the job; formatting and linting need to
+be part of the normal workflow too. That article connected `generate_project`,
+`sanity_check`, Terraform scaffolding and `commit_gh`, so checks were less
+dependent on remembering another command before a commit.
+
+The next article, *Streamlining Project Creation and Container Builds with
+HashiCorp Packer and Automation* (June 28, 2025), followed the repository
+into image builds, versioning and scanning. The motivation was traceability:
+being able to relate the source, the build and the scan output. Those are
+adjacent tools in a larger workflow; today's `generate_project` does not
+itself implement the Packer build or the entire scanning pipeline.
+
+*Automating Project Structure Insights with Folder_Tree* (June 30, 2025)
+addressed what happens after files start accumulating. A readable, filtered
+view of the repository helps explain the relationship between infrastructure,
+application code and supporting files. `folder_tree` made that overview
+another repeatable step rather than documentation I had to assemble by hand.
+
+Together, those articles describe what I want from the toolbox: repeatable
+setup, checks close to the work, traceable changes and a structure I can
+understand when I return to it. The tools stay separate because their jobs
+are different. The generator connects the pieces available on my machine.
+
+## The next session also needs context
+
+A folder tree helps a reader find the code. It does not tell a coding agent
+which test is a placeholder, how to run a meaningful check, or which Podman
+containers it may operate on. I was now repeating that context at the start
+of sessions, just as I had once repeated the Git setup.
+
+Claude added support for its workspace files. Extending the same project
+for Codex made the next requirement clear: prepare a shared project
+convention in each tool's native layout. The command should give a new
+session useful context without replacing an existing project's instructions.
 
 ## Start with a local project
 
@@ -276,8 +313,12 @@ and `gh` directly. Maintaining the generator itself uses `commit_gh` in my
 workflow; detecting that helper inside the script is not the same as
 delegating every generated commit to it.
 
-What I want from this tool is a predictable starting point: the right files,
-the right target directory, a clear resource scope, and context the next
-agent session can discover. The most useful improvements so far have come
-from testing those boundaries against real existing projects—and writing
-down where the automation still depends on my machine.
+The reason I keep extending this tool is the same reason I wrote the earlier
+scripts. Once I have decided how I want to start and explain a project, I
+want that decision to survive beyond the terminal session where I made it.
+
+The first version remembered the repository setup. The surrounding tools
+added checks, build records and a readable structure. This version also
+remembers the context Claude Code and Codex need when they open the project.
+I can still inspect every generated file, and the next improvement can start
+with a concrete failure and a test instead of another setup checklist.

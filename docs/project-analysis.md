@@ -243,3 +243,21 @@ claimed generator architecture or the formula's installed runtime.
 The Medium draft in `article/01_generate_project.md` explains the implemented
 workflow and these practical boundaries. It is not a claim that every open
 finding has been resolved.
+
+## Editorial source material
+
+The Medium draft uses the owner's four prior articles as historical context
+and motivation. These local reference copies are ignored in `input/`; they
+are not required to run or package the generator. Their historical examples
+are not treated as proof of current behavior.
+
+| Local source | Article | Contribution to the new draft |
+| --- | --- | --- |
+| `input/03.md` | Automating Docker Compose project setup and Git Integration, 2024-07-31 | Repetitive setup, consistent layouts, initial publication versus subsequent commits. |
+| `input/01.md` | End-to-End Project Bootstrapping: Quality Checks Meet Terraform Automation, 2025-06-27 | Integrating checks with creation and keeping Terraform scaffolding modular. |
+| `input/02.md` | Streamlining Project Creation and Container Builds with HashiCorp Packer and Automation, 2025-06-28 | Traceability across source, builds, versioning and scans; adjacent tooling remains separate. |
+| `input/04.md` | Automating Project Structure Insights with Folder_Tree, 2025-06-30 | Understandable structure and documentation as an ongoing workflow. |
+
+The new article extends that history to reusable agent context, retaining
+current-code qualifications rather than repeating earlier blanket claims
+about guaranteed quality, security or reproducibility.
