@@ -1,8 +1,8 @@
 class GenerateProject < Formula
   desc "Scaffold projects with local Claude Code and Codex workspaces"
   homepage "https://github.com/raymonepping/generate_project"
-  url "https://github.com/raymonepping/generate_project/archive/refs/tags/v2.1.0.tar.gz"
-  sha256 "917df79b96ced4531d45d690a1ab18c5a4a2053f4b1215374bacbd69da4936d4"
+  url "https://github.com/raymonepping/generate_project/archive/refs/tags/v2.1.1.tar.gz"
+  sha256 "4e5900f882fce33c16ab823837fbc9f8bf4c3779a343f0ee97a852849ae2394a"
   license "GPL-3.0-only"
 
   depends_on "bash"
@@ -40,11 +40,14 @@ class GenerateProject < Formula
 
   test do
     assert_match "--codex-only", shell_output("#{bin}/generate_project --help")
-    system bin/"generate_project", "--codex-only", testpath, "--type", "node", "--prefix", "brew"
-    assert_match "Stack: node", (testpath/"AGENTS.md").read
-    assert_match "`brew-`", (testpath/"AGENTS.md").read
-    assert_path_exists testpath/".agents/skills/project-checks/SKILL.md"
-    assert_path_exists testpath/".agents/skills/scoped-resources/SKILL.md"
-    assert_path_exists testpath/".codex/config.toml"
+    project = testpath/"existing"
+    project.mkpath
+    system bin/"generate_project", "--project", project, "--codex-only", "--type", "node", "--prefix", "brew"
+    refute_path_exists testpath/"AGENTS.md"
+    assert_match "Stack: node", (project/"AGENTS.md").read
+    assert_match "`brew-`", (project/"AGENTS.md").read
+    assert_path_exists project/".agents/skills/project-checks/SKILL.md"
+    assert_path_exists project/".agents/skills/scoped-resources/SKILL.md"
+    assert_path_exists project/".codex/config.toml"
   end
 end
