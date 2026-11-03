@@ -26,7 +26,11 @@ target argument, retrofit still defaults to the current directory.
 Retrofit adds missing files and repairs broken skill symlinks or file stubs.
 Existing skill directories and config are preserved; it is not an upgrade that
 overwrites installed skills. Existing instructions are preserved except for
-filling the generator's unset resource-prefix line when `--prefix` is given.
+recording a requested resource prefix when `--prefix` is given. The generator
+fills an unset prefix line, inserts after `- Stack:`, inserts under `## Operate`,
+or appends an Operate section if neither marker exists. Existing different
+prefixes are preserved with a warning. Root `CLAUDE.md` files receive the same
+prefix handling in Claude retrofit mode.
 An existing `AGENTS.override.md` is left untouched and suppresses generation
 of a competing `AGENTS.md`. Copies dereference template skill symlinks so each
 project remains independent of the template.

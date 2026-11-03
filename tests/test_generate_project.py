@@ -201,6 +201,34 @@ class GenerateProjectTests(unittest.TestCase):
                     self.assertEqual(before, self.snapshot(self.work))
                     self.assertFalse((self.work / "missing").exists())
 
+    def test_prefix_is_recorded_without_a_stack_line(self):
+        for mode, filename in (("--codex-only", "AGENTS.md"),
+                               ("--claude-only", ".claude/CLAUDE.md"),
+                               ("--claude-only", "CLAUDE.md")):
+            for content in ("# Custom project\n\n## Operate\n\n- Run the checks.\n",
+                            "# Custom project\n\nKeep these instructions intact."):
+                with self.subTest(mode=mode, filename=filename, content=content):
+                    with tempfile.TemporaryDirectory(dir=self.work) as tmp:
+                        project = Path(tmp)
+                        instructions = project / filename
+                        instructions.parent.mkdir(parents=True, exist_ok=True)
+                        instructions.write_text(content)
+                        output = self.generate(mode, str(project), "--prefix", "vcr")
+                        self.assertNotIn("add this line yourself", output)
+                        result = instructions.read_text()
+                        self.assertIn("## Operate\n\n- Resource prefix: `vcr-`.", result)
+                        for original in content.splitlines():
+                            self.assertIn(original, result)
+                        self.assertEqual(result.count("## Operate"), 1)
+                        self.assertEqual(result.count("Resource prefix:"), 1)
+                        self.generate(mode, str(project), "--prefix", "vcr-")
+                        self.assertEqual(result, instructions.read_text())
+                        output = self.generate(mode, str(project), "--prefix", "other")
+                        self.assertIn("already names a prefix", output)
+                        self.assertEqual(result, instructions.read_text())
+                        if filename == "CLAUDE.md":
+                            self.assertFalse((project / ".claude/CLAUDE.md").exists())
+
 
 if __name__ == "__main__":
     unittest.main()

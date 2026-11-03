@@ -43,7 +43,7 @@ CLAUDE.md.tpl         starter CLAUDE.md (__PROJECT__, __TYPE__, __PREFIX__, __CO
 ```
 
 A new project gets a copy plus a `CLAUDE.md` filled in for its type.
-`--claude-only` never overwrites existing files. It does replace a skill that is
+`--claude-only` preserves existing files apart from recording a requested prefix. It does replace a skill that is
 a broken symlink or a small stub file, which is what copying symlinked skills
 leaves behind. Running it twice changes nothing.
 
@@ -71,7 +71,9 @@ before changing files. To create a new Codex project without Claude, use
 The template defaults to `~/.config/generate_project/codex/` if present, then
 the bundled `tpl/codex/`. Override it with `GENERATE_PROJECT_CODEX_TEMPLATE`
 or `--codex-template`. Retrofit preserves existing instructions, skills and
-config, with the same prefix-placeholder repair as Claude. See
+config, with the same prefix repair as Claude. A new prefix is inserted after
+`- Stack:`, under an existing `## Operate`, or in an appended Operate section
+when neither marker exists. An existing different prefix remains unchanged. See
 [Codex support](docs/codex-support.md) for discovery, migration and privacy details.
 
 ## Keeping AI tooling private
@@ -94,8 +96,9 @@ chmod 755 /usr/local/bin/generate_project
 ```
 
 Requires `git`; publishing also needs an authenticated `gh`. `sanity_check`,
-`validate_ignore`, `commit_gh`, `trigger_git_scan` and `folder_tree` are used
-when present.
+`validate_ignore`, `trigger_git_scan` and `folder_tree` are used when present.
+The generator detects `commit_gh` (or copies its fallback), but its initial
+commit and GitHub publishing currently use `git` and `gh` directly.
 
 Homebrew installs the script and bundled Codex templates together using
 `Formula/generate_project.rb`. Its wrapper always uses Homebrew Bash.
@@ -106,3 +109,7 @@ Run the offline integration checks with:
 python3 -m unittest discover -s tests -v
 shellcheck bin/generate_project.sh
 ```
+
+Read the [project analysis](docs/project-analysis.md) for confirmed limitations
+and the [Medium article draft](article/01_generate_project.md) for the design
+and workflow walkthrough.

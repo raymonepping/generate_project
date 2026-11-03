@@ -49,5 +49,12 @@ class GenerateProject < Formula
     assert_path_exists project/".agents/skills/project-checks/SKILL.md"
     assert_path_exists project/".agents/skills/scoped-resources/SKILL.md"
     assert_path_exists project/".codex/config.toml"
+
+    handwritten = testpath/"handwritten"
+    handwritten.mkpath
+    (handwritten/"AGENTS.md").write "# Existing\n\n## Operate\n\n- Keep this guidance.\n"
+    system bin/"generate_project", "--codex-only", handwritten, "--prefix", "brew"
+    assert_match "`brew-`", (handwritten/"AGENTS.md").read
+    assert_match "- Keep this guidance.", (handwritten/"AGENTS.md").read
   end
 end

@@ -191,8 +191,9 @@ project_prefix_line() {
   fi
 }
 
-# Record the prefix in existing assistant instructions: fill the placeholder line, or add the
-# line after "- Stack:". A file that already names a prefix is left alone.
+# Record the prefix without requiring a particular instruction-file layout.
+# Prefer the Stack line, then Operate, then append an Operate section.
+# A file that already names a prefix is left alone.
 record_prefix() {
   local file="$1" line current tmp
   [[ -n "$PREFIX" && -f "$file" ]] || return 0
@@ -209,10 +210,11 @@ record_prefix() {
     awk -v m="$PREFIX_MARKER" -v l="$line" 'index($0, m) == 1 && !done { print l; done = 1; next } { print }' "$file" > "$tmp"
   elif grep -q '^- Stack:' "$file"; then
     awk -v l="$line" '{ print } /^- Stack:/ && !done { print l; done = 1 }' "$file" > "$tmp"
+  elif grep -Eq '^## Operate[[:space:]]*$' "$file"; then
+    awk -v l="$line" '{ print } /^## Operate[[:space:]]*$/ && !done { print ""; print l; done = 1 }' "$file" > "$tmp"
   else
-    rm -f -- "$tmp"
-    echo "⚠️ No '- Stack:' line in $file; add this line yourself: $line"
-    return 0
+    cat "$file" > "$tmp"
+    printf '\n\n## Operate\n\n%s\n' "$line" >> "$tmp"
   fi
   cat "$tmp" > "$file" && rm -f -- "$tmp"
   echo "🏷️ Recorded prefix $PREFIX in $file"
@@ -273,7 +275,11 @@ install_claude_dir() {
     added=$((added + 1))
   else
     # Existing instructions are never overwritten; only the prefix line is recorded.
-    record_prefix "$dir/.claude/CLAUDE.md"
+    if [[ -f "$dir/.claude/CLAUDE.md" ]]; then
+      record_prefix "$dir/.claude/CLAUDE.md"
+    else
+      record_prefix "$dir/CLAUDE.md"
+    fi
   fi
 
   command -v xattr &>/dev/null && xattr -rc "$dir/.claude" 2>/dev/null || true
