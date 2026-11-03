@@ -1,0 +1,2 @@
+# Optional project overrides. Codex loads this file only for trusted projects.
+# User-level model, approval, sandbox and MCP settings remain inherited.

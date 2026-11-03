@@ -2,9 +2,38 @@
 set -euo pipefail
 
 # 📌 Usage & Notes
-if [[ "${1:-}" != "--project" || -z "${2:-}" ]]; then
+usage() {
   cat <<'USAGE'
-Usage: generate_project.sh --project <project-name> [--type <docker|node|python|terraform|go>]
+Usage:
+  generate_project --project <name> [--type <docker|node|python|terraform|go>]
+                   [--prefix <prefix>] [--private] [--no-github] [--no-claude]
+                   [--claude-template <dir>] [--no-codex] [--codex-template <dir>]
+  generate_project --claude-only [<existing-project-dir>] [--prefix <prefix>]
+  generate_project --codex-only [<existing-project-dir>] [--type <type>] [--prefix <prefix>]
+
+Options:
+  --project <name>          Create ./<name>, scaffold it, commit, and publish it on GitHub.
+  --type <type>             docker, node, python, terraform or go.
+  --prefix <prefix>         Resource prefix for containers, VMs and namespaces (e.g. srot or srot-).
+                            Written into assistant instructions to scope resource operations.
+  --private                 Create the GitHub repository as private (default: public).
+  --no-github               Create and commit locally only; skip GitHub.
+  --no-claude               Do not add a .claude folder.
+  --claude-template <dir>   Template for .claude (default: ~/.config/generate_project/claude,
+                            or $GENERATE_PROJECT_CLAUDE_TEMPLATE).
+  --claude-only [<dir>]     Add or repair .claude in an existing project (default: current dir).
+                            Never overwrites existing files; replaces broken skill links.
+  --no-codex                Do not add Codex instructions, skills or config.
+  --codex-template <dir>    Codex template (default: ~/.config/generate_project/codex,
+                            then bundled tpl/codex; override: $GENERATE_PROJECT_CODEX_TEMPLATE).
+  --codex-only [<dir>]      Add or repair Codex support in an existing project.
+                            Preserves existing files; --type sets starter commands.
+  -h, --help                Show this help.
+
+The .claude folder gets agents/, skills/, settings.local.json and a starter CLAUDE.md.
+Codex gets root AGENTS.md, .agents/skills/ and optional .codex/config.toml.
+AI folders and AGENTS.md / AGENTS.override.md are added to .gitignore,
+.dockerignore and ~/.gitignore_global, and the first commit refuses to include them.
 
 Types:
   docker     Minimal Dockerfile-only repo.
@@ -12,37 +41,348 @@ Types:
   python     Minimal Python app with app.py.
   terraform  Minimal main.tf with required_version.
   go         Minimal Go CLI (cmd/<app>/main.go, go.mod, Makefile, .golangci.yml).
-
-Important:
-  - Go projects do NOT include Dockerfile or .dockerignore by default.
-    Reason: the Go template targets native CLI builds and Homebrew releases.
-    If you want containers later, add a Dockerfile yourself or rerun with --type docker.
+             Go projects do NOT include a Dockerfile or .dockerignore: the template targets
+             native CLI builds and Homebrew releases.
 USAGE
-  exit 1
+}
+
+PROJECT_NAME=""
+TYPE=""
+VISIBILITY="public"
+USE_GITHUB=true
+USE_CLAUDE=true
+USE_CODEX=true
+CODEX_ONLY=false
+CODEX_ONLY_DIR="."
+CLAUDE_ONLY=false
+CLAUDE_ONLY_DIR="."
+PREFIX=""
+CLAUDE_TEMPLATE="${GENERATE_PROJECT_CLAUDE_TEMPLATE:-$HOME/.config/generate_project/claude}"
+
+# Resolve bundled assets before entering the generated project.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CODEX_TEMPLATE="${GENERATE_PROJECT_CODEX_TEMPLATE:-$HOME/.config/generate_project/codex}"
+if [[ -z "${GENERATE_PROJECT_CODEX_TEMPLATE:-}" && ! -d "$CODEX_TEMPLATE" && -d "$SCRIPT_DIR/../tpl/codex" ]]; then
+  CODEX_TEMPLATE="$SCRIPT_DIR/../tpl/codex"
 fi
 
-# --- GitHub authentication check ---
-if ! gh auth status 2>&1 | grep -q "Logged in to github.com"; then
-  echo "❌ GitHub CLI is not authenticated."
-  echo "👉 Run: gh auth login"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --project) PROJECT_NAME="${2:-}"; shift 2 || { usage; exit 1; } ;;
+    --type) TYPE="${2:-}"; shift 2 || { usage; exit 1; } ;;
+    --prefix) PREFIX="${2:-}"; shift 2 || { usage; exit 1; } ;;
+    --private) VISIBILITY="private"; shift ;;
+    --public) VISIBILITY="public"; shift ;;
+    --no-github) USE_GITHUB=false; shift ;;
+    --no-claude) USE_CLAUDE=false; shift ;;
+    --no-codex) USE_CODEX=false; shift ;;
+    --codex-template) CODEX_TEMPLATE="${2:-}"; shift 2 || { usage; exit 1; } ;;
+    --codex-only)
+      CODEX_ONLY=true
+      if [[ -n "${2:-}" && "${2:0:1}" != "-" ]]; then CODEX_ONLY_DIR="$2"; shift 2; else shift; fi
+      ;;
+    --claude-template) CLAUDE_TEMPLATE="${2:-}"; shift 2 || { usage; exit 1; } ;;
+    --claude-only)
+      CLAUDE_ONLY=true
+      if [[ -n "${2:-}" && "${2:0:1}" != "-" ]]; then CLAUDE_ONLY_DIR="$2"; shift 2; else shift; fi
+      ;;
+    -h|--help) usage; exit 0 ;;
+    *)
+      # In --claude-only mode the project folder may follow other options.
+      if [[ "$CLAUDE_ONLY" == true && "$CLAUDE_ONLY_DIR" == "." && "${1:0:1}" != "-" ]]; then
+        CLAUDE_ONLY_DIR="$1"; shift
+      elif [[ "$CODEX_ONLY" == true && "$CODEX_ONLY_DIR" == "." && "${1:0:1}" != "-" ]]; then
+        CODEX_ONLY_DIR="$1"; shift
+      else
+        echo "❌ Unknown argument: $1"; usage; exit 1
+      fi
+      ;;
+  esac
+done
+
+if [[ "$CLAUDE_ONLY" == true && "$CODEX_ONLY" == true ]]; then
+  echo "❌ Use --claude-only and --codex-only separately."
   exit 1
 fi
+if [[ "$CODEX_ONLY" == true && "$USE_CODEX" == false ]]; then
+  echo "❌ --codex-only cannot be combined with --no-codex."
+  exit 1
+fi
+# Custom template paths may be relative to the invocation directory.
+if [[ -d "$CODEX_TEMPLATE" ]]; then CODEX_TEMPLATE="$(cd "$CODEX_TEMPLATE" && pwd)"; fi
 
-PROJECT_NAME="$2"
-TYPE="${4:-}"  # Optional --type argument
+# Prefix: lowercase letters and digits, starting with a letter, always ending in "-".
+if [[ -n "$PREFIX" ]]; then
+  PREFIX="${PREFIX%-}"
+  if [[ ! "$PREFIX" =~ ^[a-z][a-z0-9]{0,11}$ ]]; then
+    echo "❌ --prefix must be 1-12 lowercase letters or digits, starting with a letter (e.g. srot or srot-)."
+    exit 1
+  fi
+  PREFIX="${PREFIX}-"
+fi
+
 SANITY_CHECK_CMD="sanity_check"
-DEFAULT_GITIGNORE="/Users/raymon.epping/.gitignore_global"
+DEFAULT_GITIGNORE="$HOME/.gitignore_global"
 DEFAULT_DOCKERIGNORE="$HOME/.dockerignore_global"
 COMMIT_SCRIPT_NAME="commit_gh"
 COMMIT_SCRIPT_FALLBACK="$HOME/bin/commit_gh"
+# Local AI tooling: never committed, never sent into image builds.
+AI_TOOL_DIRS=(.claude/ .agents/ .codex/ .impeccable/ AGENTS.md AGENTS.override.md)
+
+# Append the AI tooling block to an ignore file, once.
+ensure_ai_ignored() {
+  local file="$1" missing=() entry
+  [[ -f "$file" ]] || touch "$file"
+  for entry in "${AI_TOOL_DIRS[@]}"; do
+    grep -qxF "$entry" "$file" || missing+=("$entry")
+  done
+  [[ ${#missing[@]} -eq 0 ]] && return 0
+  {
+    printf '\n# AI assistant tooling (local only)\n'
+    printf '%s\n' "${missing[@]}"
+  } >> "$file"
+  echo "🙈 Ignored ${missing[*]} in $file"
+}
+
+# Starter commands per project type, for both assistants.
+# shellcheck disable=SC2016
+project_commands() {
+  case "$1" in
+    node) echo '- Run: `npm start`. Test: `npm test`.' ;;
+    python) echo '- Run: `python app.py`.' ;;
+    terraform) echo '- Check: `terraform fmt -check`, `terraform init -backend=false && terraform validate`.' ;;
+    docker) echo '- Build: `podman build --format docker -t <name> .` (images must be arm64).' ;;
+    go) echo '- Build: `make build`. Test: `make test`. Lint: `make lint`.' ;;
+    *) echo '- Commands: <how to run, test and lint this project>.' ;;
+  esac
+}
+
+# The instruction line that states the resource prefix, or asks for one.
+PREFIX_MARKER="- Resource prefix:"
+# shellcheck disable=SC2016
+project_prefix_line() {
+  if [[ -n "$PREFIX" ]]; then
+    printf '%s `%s`. Filter every podman, multipass and oc command by it; never touch resources with another prefix.\n' "$PREFIX_MARKER" "$PREFIX"
+  else
+    printf '%s <none yet: choose one, e.g. `abc-`, and record it here>.\n' "$PREFIX_MARKER"
+  fi
+}
+
+# Record the prefix in existing assistant instructions: fill the placeholder line, or add the
+# line after "- Stack:". A file that already names a prefix is left alone.
+record_prefix() {
+  local file="$1" line current tmp
+  [[ -n "$PREFIX" && -f "$file" ]] || return 0
+  line="$(project_prefix_line)"
+  current="$(grep -F -- "$PREFIX_MARKER" "$file" | head -1 || true)"
+  if [[ "$current" == "$line" ]]; then
+    return 0
+  elif [[ -n "$current" && "$current" != *"<none yet"* ]]; then
+    echo "⚠️ $file already names a prefix; left unchanged: $current"
+    return 0
+  fi
+  tmp="$(mktemp)"
+  if [[ -n "$current" ]]; then
+    awk -v m="$PREFIX_MARKER" -v l="$line" 'index($0, m) == 1 && !done { print l; done = 1; next } { print }' "$file" > "$tmp"
+  elif grep -q '^- Stack:' "$file"; then
+    awk -v l="$line" '{ print } /^- Stack:/ && !done { print l; done = 1 }' "$file" > "$tmp"
+  else
+    rm -f -- "$tmp"
+    echo "⚠️ No '- Stack:' line in $file; add this line yourself: $line"
+    return 0
+  fi
+  cat "$tmp" > "$file" && rm -f -- "$tmp"
+  echo "🏷️ Recorded prefix $PREFIX in $file"
+}
+
+# Copy the .claude template into a project. Existing files are kept; a skill that is
+# a broken link or a stub file (left over from copying symlinks) is replaced.
+install_claude_dir() {
+  local dir="$1" name="$2" type="${3:-}" item target added=0 repaired=0
+  if [[ ! -d "$CLAUDE_TEMPLATE" ]]; then
+    echo "⚠️ No .claude template at $CLAUDE_TEMPLATE; creating .claude with CLAUDE.md only."
+  fi
+  mkdir -p "$dir/.claude"
+
+  if [[ -d "$CLAUDE_TEMPLATE" ]]; then
+    for item in agents skills; do
+      [[ -d "$CLAUDE_TEMPLATE/$item" ]] || continue
+      mkdir -p "$dir/.claude/$item"
+      for src in "$CLAUDE_TEMPLATE/$item"/*; do
+        [[ -e "$src" ]] || continue
+        target="$dir/.claude/$item/$(basename "$src")"
+        if [[ -d "$src" && ( -L "$target" || -f "$target" ) && ! -d "$target" ]]; then
+          rm -f -- "$target"
+          repaired=$((repaired + 1))
+        elif [[ -L "$target" && ! -e "$target" ]]; then
+          rm -f -- "$target"
+          repaired=$((repaired + 1))
+        elif [[ -e "$target" ]]; then
+          continue
+        else
+          added=$((added + 1))
+        fi
+        cp -RL "$src" "$target"
+      done
+    done
+    if [[ -f "$CLAUDE_TEMPLATE/settings.local.json" && ! -e "$dir/.claude/settings.local.json" ]]; then
+      cp "$CLAUDE_TEMPLATE/settings.local.json" "$dir/.claude/settings.local.json"
+      added=$((added + 1))
+    fi
+  fi
+
+  if [[ ! -e "$dir/.claude/CLAUDE.md" && ! -e "$dir/CLAUDE.md" ]]; then
+    local tpl="$CLAUDE_TEMPLATE/CLAUDE.md.tpl" commands prefix_line
+    commands="$(project_commands "$type")"
+    prefix_line="$(project_prefix_line)"
+    if [[ -f "$tpl" ]]; then
+      awk -v p="$name" -v t="${type:-generic}" -v c="$commands" -v x="$prefix_line" '
+        { gsub(/__PROJECT__/, p); gsub(/__TYPE__/, t) }
+        /^__COMMANDS__$/ { print c; next }
+        /^__PREFIX__$/ { print x; next }
+        { print }
+      ' "$tpl" > "$dir/.claude/CLAUDE.md"
+      # Templates written before --prefix existed have no __PREFIX__ line.
+      grep -qF -- "$PREFIX_MARKER" "$dir/.claude/CLAUDE.md" || record_prefix "$dir/.claude/CLAUDE.md"
+    else
+      printf '# %s\n\n## Operate\n\n- Stack: %s.\n%s\n%s\n' "$name" "${type:-generic}" "$prefix_line" "$commands" > "$dir/.claude/CLAUDE.md"
+    fi
+    added=$((added + 1))
+  else
+    # Existing instructions are never overwritten; only the prefix line is recorded.
+    record_prefix "$dir/.claude/CLAUDE.md"
+  fi
+
+  command -v xattr &>/dev/null && xattr -rc "$dir/.claude" 2>/dev/null || true
+  echo "🤖 .claude ready in $dir ($added added, $repaired repaired)"
+}
+
+# Codex uses root instructions and .agents/skills, rather than .codex/AGENTS.md.
+install_codex_dir() {
+  local dir="$1" name="$2" type="${3:-}" src target tpl commands prefix_line
+  local added=0 repaired=0
+  if [[ ! -d "$CODEX_TEMPLATE" ]]; then
+    echo "⚠️ No Codex template at $CODEX_TEMPLATE; creating AGENTS.md only (no skills)."
+  fi
+  if [[ -d "$CODEX_TEMPLATE/skills" ]]; then
+    mkdir -p "$dir/.agents/skills"
+    for src in "$CODEX_TEMPLATE/skills"/*; do
+      [[ -d "$src" && -f "$src/SKILL.md" ]] || continue
+      target="$dir/.agents/skills/$(basename "$src")"
+      if [[ -L "$target" && ! -e "$target" ]] || [[ -f "$target" && ! -d "$target" ]]; then
+        rm -f -- "$target"
+        repaired=$((repaired + 1))
+      elif [[ -e "$target" || -L "$target" ]]; then
+        continue
+      else
+        added=$((added + 1))
+      fi
+      cp -RL "$src" "$target"
+    done
+  fi
+  if [[ -f "$CODEX_TEMPLATE/config.toml" && ! -e "$dir/.codex/config.toml" && ! -L "$dir/.codex/config.toml" ]]; then
+    mkdir -p "$dir/.codex"
+    cp "$CODEX_TEMPLATE/config.toml" "$dir/.codex/config.toml"
+    added=$((added + 1))
+  fi
+  # An override takes precedence over AGENTS.md. Never create competing guidance.
+  if [[ -e "$dir/AGENTS.override.md" || -L "$dir/AGENTS.override.md" ]]; then
+    echo "ℹ️ Existing AGENTS.override.md takes precedence; instructions left unchanged."
+  elif [[ -e "$dir/AGENTS.md" || -L "$dir/AGENTS.md" ]]; then
+    record_prefix "$dir/AGENTS.md"
+  else
+    tpl="$CODEX_TEMPLATE/AGENTS.md.tpl"
+    commands="$(project_commands "$type")"
+    prefix_line="$(project_prefix_line)"
+    if [[ -f "$tpl" ]]; then
+      # Use environment values so awk cannot reinterpret backslashes in paths.
+      GP_PROJECT="$name" GP_TYPE="${type:-generic}" GP_COMMANDS="$commands" GP_PREFIX="$prefix_line" awk '
+        { gsub(/__PROJECT__/, ENVIRON["GP_PROJECT"]); gsub(/__TYPE__/, ENVIRON["GP_TYPE"]) }
+        /^__COMMANDS__$/ { print ENVIRON["GP_COMMANDS"]; next }
+        /^__PREFIX__$/ { print ENVIRON["GP_PREFIX"]; next }
+        { print }
+      ' "$tpl" > "$dir/AGENTS.md"
+      grep -qF -- "$PREFIX_MARKER" "$dir/AGENTS.md" || record_prefix "$dir/AGENTS.md"
+    else
+      printf '# %s\n\n## Operate\n\n- Stack: %s.\n%s\n%s\n' "$name" "${type:-generic}" "$prefix_line" "$commands" > "$dir/AGENTS.md"
+    fi
+    added=$((added + 1))
+  fi
+  echo "🤖 Codex ready in $dir ($added added, $repaired repaired)"
+}
+
+# Keep the global excludes file in step, so every repo on this machine ignores AI tooling.
+if [[ -f "$DEFAULT_GITIGNORE" ]]; then
+  ensure_ai_ignored "$DEFAULT_GITIGNORE"
+fi
+
+# Retrofit never commits or publishes, and keeps ignore changes local to the repo.
+if [[ "$CODEX_ONLY" == true ]]; then
+  [[ -d "$CODEX_ONLY_DIR" ]] || { echo "❌ Not a directory: $CODEX_ONLY_DIR"; exit 1; }
+  CODEX_ONLY_DIR="$(cd "$CODEX_ONLY_DIR" && pwd)"
+  if git -C "$CODEX_ONLY_DIR" rev-parse --is-inside-work-tree &>/dev/null; then
+    exclude="$(git -C "$CODEX_ONLY_DIR" rev-parse --git-path info/exclude)"
+    [[ "$exclude" = /* ]] || exclude="$CODEX_ONLY_DIR/$exclude"
+    mkdir -p "$(dirname "$exclude")"
+    ensure_ai_ignored "$exclude"
+    if [[ -n "$(git -C "$CODEX_ONLY_DIR" ls-files .agents .codex AGENTS.md AGENTS.override.md)" ]]; then
+      echo "⚠️ Codex files are already tracked; ignore rules do not untrack them."
+    fi
+  fi
+  install_codex_dir "$CODEX_ONLY_DIR" "$(basename "$CODEX_ONLY_DIR")" "$TYPE"
+  exit 0
+fi
+
+# 🔧 Retrofit mode: add or repair .claude in an existing project.
+if [[ "$CLAUDE_ONLY" == true ]]; then
+  [[ -d "$CLAUDE_ONLY_DIR" ]] || { echo "❌ Not a directory: $CLAUDE_ONLY_DIR"; exit 1; }
+  CLAUDE_ONLY_DIR="$(cd "$CLAUDE_ONLY_DIR" && pwd)"
+  install_claude_dir "$CLAUDE_ONLY_DIR" "$(basename "$CLAUDE_ONLY_DIR")" ""
+  if git -C "$CLAUDE_ONLY_DIR" rev-parse --is-inside-work-tree &>/dev/null; then
+    if git -C "$CLAUDE_ONLY_DIR" check-ignore -q .claude/CLAUDE.md; then
+      echo "🙈 .claude is ignored by git"
+    else
+      exclude="$(git -C "$CLAUDE_ONLY_DIR" rev-parse --git-path info/exclude)"
+      [[ "$exclude" = /* ]] || exclude="$CLAUDE_ONLY_DIR/$exclude"
+      mkdir -p "$(dirname "$exclude")"
+      ensure_ai_ignored "$exclude"
+    fi
+    if [[ -n "$(git -C "$CLAUDE_ONLY_DIR" ls-files .claude)" ]]; then
+      echo "⚠️ Some .claude files are already tracked by git; ignore rules do not untrack them."
+    fi
+  fi
+  exit 0
+fi
+
+# 📌 Validate input
+if [[ -z "$PROJECT_NAME" ]]; then
+  usage
+  exit 1
+fi
+if [[ ! "$PROJECT_NAME" =~ ^[A-Za-z0-9._-]+$ ]]; then
+  echo "❌ Project name may only contain letters, digits, '.', '_' and '-'."
+  exit 1
+fi
+case "$TYPE" in
+  ""|docker|node|python|terraform|go) ;;
+  *) echo "⚠️ Unknown project type '$TYPE'. Proceeding with generic scaffold." ;;
+esac
+if [[ -e "$PROJECT_NAME" && -n "$(ls -A "$PROJECT_NAME" 2>/dev/null)" ]]; then
+  echo "❌ '$PROJECT_NAME' already exists and is not empty. Use --claude-only or --codex-only to add assistant support."
+  exit 1
+fi
 
 # 🔧 Prerequisites
-for bin in git gh; do
-  if ! command -v "$bin" &>/dev/null; then
-    echo "❌ Required tool missing: $bin"
+command -v git &>/dev/null || { echo "❌ Required tool missing: git"; exit 1; }
+if [[ "$USE_GITHUB" == true ]]; then
+  command -v gh &>/dev/null || { echo "❌ Required tool missing: gh (or use --no-github)"; exit 1; }
+  # --- GitHub authentication check ---
+  if ! gh auth status 2>&1 | grep -q "Logged in to github.com"; then
+    echo "❌ GitHub CLI is not authenticated."
+    echo "👉 Run: gh auth login (or use --no-github)"
     exit 1
   fi
-done
+fi
 
 # 🏗️ Create structure
 mkdir -p "$PROJECT_NAME"
@@ -97,8 +437,8 @@ go ${GO_VERSION}
 EOF
 
     # main.go
-    mkdir -p cmd/${PROJECT_NAME}
-    cat > cmd/${PROJECT_NAME}/main.go <<'EOF'
+    mkdir -p "cmd/${PROJECT_NAME}"
+    cat > "cmd/${PROJECT_NAME}/main.go" <<'EOF'
 package main
 
 import (
@@ -167,11 +507,6 @@ issues:
   exclude-use-default: false
 EOF
     ;;
-  "")
-    ;;
-  *)
-    echo "⚠️ Unknown project type '$TYPE'. Proceeding with generic scaffold."
-    ;;
 esac
 
 echo "📁 Created project: $PROJECT_NAME"
@@ -195,6 +530,7 @@ bin/
 coverage.*
 EOF
 fi
+ensure_ai_ignored .gitignore
 
 # 📄 .dockerignore
 # For Go we SKIP creating .dockerignore and any Dockerfile on purpose.
@@ -214,6 +550,7 @@ node_modules
 __pycache__
 EOF
   fi
+  ensure_ai_ignored .dockerignore
 fi
 
 # ✅ Validate resulting ignore files (quiet mode)
@@ -228,7 +565,10 @@ else
 fi
 
 # 📄 LICENSE + README
-curl -s https://www.gnu.org/licenses/gpl-3.0.txt > LICENSE
+if ! curl -fsS https://www.gnu.org/licenses/gpl-3.0.txt -o LICENSE; then
+  echo "⚠️ Could not download the GPL-3.0 licence; add LICENSE yourself."
+  rm -f LICENSE
+fi
 
 if [[ "$TYPE" == "go" ]]; then
   cat > README.md <<EOF
@@ -330,15 +670,15 @@ EOF
     ;;
 esac
 
-echo "🔐 Added .github/dependabot.yml"
+[[ -f "$DEPENDABOT_FILE" ]] && echo "🔐 Added .github/dependabot.yml"
 
 # 📄 Type-specific scan_on_pr.yml workflow
 if [[ -n "$TYPE" ]]; then
   SCAN_SOURCE_FILE="$HOME/.${TYPE}_scan_on_pr.yml"
   SCAN_TARGET_DIR=".github/workflows"
   SCAN_TARGET_FILE="${SCAN_TARGET_DIR}/scan_on_pr.yml"
-  mkdir -p "$SCAN_TARGET_DIR"
   if [[ -f "$SCAN_SOURCE_FILE" ]]; then
+    mkdir -p "$SCAN_TARGET_DIR"
     cp "$SCAN_SOURCE_FILE" "$SCAN_TARGET_FILE"
     echo "📄 Added $TYPE scan workflow to $SCAN_TARGET_FILE"
   else
@@ -356,17 +696,27 @@ else
   echo "ℹ️ $COMMIT_SCRIPT_NAME not available"
 fi
 
-# 🧪 Run sanity_check
+# 🤖 Claude Code workspace
+if [[ "$USE_CLAUDE" == true ]]; then
+  install_claude_dir "$PWD" "$PROJECT_NAME" "$TYPE"
+fi
+
+if [[ "$USE_CODEX" == true ]]; then
+  install_codex_dir "$PWD" "$PROJECT_NAME" "$TYPE"
+fi
+
+# 🧪 Run sanity_check on project files only (never on local tooling such as skill scripts)
 if command -v "$SANITY_CHECK_CMD" &>/dev/null; then
   echo "🧪 Running sanity_check..."
-  find . -type f \( -name "*.sh" -o -name "*.py" -o -name "*.js" -o -name "*.tf" -o -name "Dockerfile" -o -name "*.go" \) \
+  find . \( -path ./.git -o -path ./.claude -o -path ./.agents -o -path ./.codex -o -path ./.impeccable -o -name node_modules \) -prune -o \
+    -type f \( -name "*.sh" -o -name "*.py" -o -name "*.js" -o -name "*.tf" -o -name "Dockerfile" -o -name "*.go" \) \
     -exec "$SANITY_CHECK_CMD" --fix --report {} +
 else
   echo "ℹ️ $SANITY_CHECK_CMD not found — skipping"
 fi
 
 # 🌀 Git + GitHub
-git init
+git init -q -b main
 
 # 🪝 Git hook for sanity_check
 HOOK_PATH=".git/hooks/pre-commit"
@@ -387,29 +737,41 @@ else
 fi
 
 git add .
-git commit -m "Initial commit for $PROJECT_NAME"
-gh repo create "$PROJECT_NAME" --public --source=. --remote=origin --push
-git branch -M main
-git push -u origin main
-
-# 🚀 Optional: Trigger scan_on_pr workflow (if it exists)
-if gh workflow list | grep -q "scan_on_pr"; then
-  echo "🌀 Triggering scan_on_pr GitHub Action workflow..."
-  gh workflow run scan_on_pr.yml || echo "ℹ️ Failed to trigger workflow"
-else
-  echo "ℹ️ scan_on_pr.yml workflow not found in repo — skipping workflow run"
+# The first commit of a public repo must never carry local AI tooling.
+LEAKED="$(git diff --cached --name-only | grep -E '(^|/)(\.(claude|agents|codex|impeccable)/|AGENTS(\.override)?\.md$)' || true)"
+if [[ -n "$LEAKED" ]]; then
+  echo "❌ Refusing to commit local AI tooling:"
+  echo "$LEAKED" | head -5
+  exit 1
 fi
+git commit -q -m "Initial commit for $PROJECT_NAME"
+echo "✅ Initial commit created"
 
-# 📌 Optional: Trigger PR-based scan
-if [[ -n "$TYPE" && -x "$(command -v trigger_git_scan)" ]]; then
-  echo ""
-  echo "🚀 Initiating GitHub PR scan via trigger_git_scan..."
-  trigger_git_scan || echo "ℹ️ trigger_git_scan failed"
+if [[ "$USE_GITHUB" == true ]]; then
+  gh repo create "$PROJECT_NAME" "--$VISIBILITY" --source=. --remote=origin --push
+
+  # 🚀 Optional: Trigger scan_on_pr workflow (if it exists)
+  WORKFLOWS="$(gh workflow list 2>/dev/null || true)"
+  if grep -q "scan_on_pr" <<<"$WORKFLOWS"; then
+    echo "🌀 Triggering scan_on_pr GitHub Action workflow..."
+    gh workflow run scan_on_pr.yml || echo "ℹ️ Failed to trigger workflow"
+  else
+    echo "ℹ️ scan_on_pr.yml workflow not found in repo — skipping workflow run"
+  fi
+
+  # 📌 Optional: Trigger PR-based scan
+  if [[ -n "$TYPE" ]] && command -v trigger_git_scan &>/dev/null; then
+    echo ""
+    echo "🚀 Initiating GitHub PR scan via trigger_git_scan..."
+    trigger_git_scan || echo "ℹ️ trigger_git_scan failed"
+  else
+    echo "ℹ️ Skipping trigger_git_scan — not enabled or missing."
+  fi
+
+  echo -e "\n✅ Project '$PROJECT_NAME' scaffolded, sanity-checked, and pushed to GitHub ($VISIBILITY)!"
 else
-  echo "ℹ️ Skipping trigger_git_scan — not enabled or missing."
+  echo -e "\n✅ Project '$PROJECT_NAME' scaffolded and committed locally (GitHub skipped)."
 fi
-
-echo -e "\n✅ Project '$PROJECT_NAME' scaffolded, sanity-checked, and pushed to GitHub!"
 
 # 🌳 Folder tree
 if command -v folder_tree &>/dev/null; then

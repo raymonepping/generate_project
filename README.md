@@ -1,256 +1,101 @@
-# tfc_controller
+# generate_project
 
-[![Release](https://img.shields.io/github/v/release/raymonepping/tfc_controller)](https://github.com/raymonepping/tfc_controller/releases)
-[![License](https://img.shields.io/github/license/raymonepping/tfc_controller)](./LICENSE)
-[![CI](https://img.shields.io/github/actions/workflow/status/raymonepping/tfc_controller/ci.yml?label=CI)](https://github.com/raymonepping/tfc_controller/actions)
+Scaffold a new project, commit it and publish it on GitHub in one command,
+with local Claude Code and Codex workspaces.
 
----
-
-**tfc_controller v1.0.0 — Manage & export Terraform Cloud org data**
-
-A Bash-based controller for managing and exporting Terraform Cloud / Terraform Enterprise (TFC/TFE) organization data.
-It wraps the TFC API with a consistent CLI interface and pretty-prints exports into human-readable tables.
-
----
-
-## Features
-
-* Validate org spec files
-* Plan and apply org + project creation
-* Export org data into JSON (minimal or full profiles)
-* Pretty-print exports with filters (projects, workspaces, variables, varsets, registry, tags, users, teams)
-* Gum-powered tables and styling if [`gum`](https://github.com/charmbracelet/gum) is installed
-* Colorized CLI with optional `--no-color` support
-
----
-
-## Installation
-
-### Option 1: Homebrew (recommended)
-
-Add the tap and install:
-
-```bash
-brew tap raymonepping/tfc-controller-cli
-brew install tfc_controller
+```sh
+generate_project --project f_Ray_grance --type node
 ```
 
-Upgrade later with:
-```bash
-brew upgrade tfc_controller
+This creates `./f_Ray_grance`: type-specific starter files, `.gitignore` and
+`.dockerignore` from your global templates, a GPL-3.0 `LICENSE`, `README.md`,
+an empty `.env`, Dependabot config, the matching `scan_on_pr` workflow, a
+`sanity_check` pre-commit hook, `.claude/`, root `AGENTS.md`,
+`.agents/skills/` and `.codex/config.toml`. It then makes the
+first commit on `main` and creates the GitHub repository.
+
+## Options
+
+| Option | Effect |
+| --- | --- |
+| `--type <docker\|node\|python\|terraform\|go>` | Starter files and Dependabot ecosystem. Go gets no Dockerfile. |
+| `--prefix <prefix>` | Resource prefix (e.g. `srot`, stored as `srot-`) written into assistant instructions to scope container, VM and namespace operations. Works with both retrofit modes. |
+| `--private` | Create the GitHub repository as private (default public). |
+| `--no-github` | Commit locally only. |
+| `--no-claude` | Skip the `.claude/` folder. |
+| `--claude-template <dir>` | Use another `.claude` template. |
+| `--claude-only [<dir>]` | Add or repair `.claude/` in an existing project. |
+| `--no-codex` | Skip Codex files. |
+| `--codex-template <dir>` | Use another Codex template. |
+| `--codex-only [<dir>]` | Add or repair Codex support; accepts `--type` and `--prefix`. |
+
+## The `.claude` folder
+
+The template lives in `~/.config/generate_project/claude/` (override with
+`GENERATE_PROJECT_CLAUDE_TEMPLATE`), outside this repository because its skills
+come from third parties:
+
+```text
+agents/               subagents
+skills/               real skill folders, no symlinks
+settings.local.json   project hooks
+CLAUDE.md.tpl         starter CLAUDE.md (__PROJECT__, __TYPE__, __PREFIX__, __COMMANDS__)
 ```
 
-Optional extras:
+A new project gets a copy plus a `CLAUDE.md` filled in for its type.
+`--claude-only` never overwrites existing files. It does replace a skill that is
+a broken symlink or a small stub file, which is what copying symlinked skills
+leaves behind. Running it twice changes nothing.
 
-```bash
-brew install gum   # richer UI tables and prompts
+To update every future project, edit the template. To update an existing
+project, run `generate_project --claude-only <dir>`.
+
+## Codex support
+
+Codex uses root `AGENTS.md`, `.agents/skills/`, and optional
+`.codex/config.toml`. The bundled template includes `project-checks` and
+`scoped-resources` skills. It inherits your personal model, approvals, sandbox,
+and MCP settings. Claude hooks and agents require translation before use in Codex.
+
+```sh
+generate_project --codex-only ./existing-project --type terraform --prefix demo
 ```
 
-### Option 2: Local clone
+The template defaults to `~/.config/generate_project/codex/` if present, then
+the bundled `tpl/codex/`. Override it with `GENERATE_PROJECT_CODEX_TEMPLATE`
+or `--codex-template`. Retrofit preserves existing instructions, skills and
+config, with the same prefix-placeholder repair as Claude. See
+[Codex support](docs/codex-support.md) for discovery, migration and privacy details.
 
-Clone the repo and add the `bin/` folder to your `PATH`:
+## Keeping AI tooling private
 
-```bash
-git clone https://github.com/<your-org>/<repo>.git
-cd <repo>
-export PATH="$PWD/bin:$PATH"
+`.claude/`, `.agents/`, `.codex/`, `.impeccable/`, `AGENTS.md` and
+`AGENTS.override.md` are added to the new
+project's `.gitignore` and `.dockerignore`, and to `~/.gitignore_global`
+(git's global excludes file on this Mac). The first commit refuses to proceed
+if any of them is staged. In `--claude-only` mode, a repository that does not
+ignore `.claude/` gets it in `.git/info/exclude`, which stays local.
+`--codex-only` also uses local Git excludes and warns about already tracked files.
+
+## Install
+
+```sh
+mkdir -p ~/.config/generate_project/codex
+cp -R tpl/codex/. ~/.config/generate_project/codex/
+cp bin/generate_project.sh /usr/local/bin/generate_project
+chmod 755 /usr/local/bin/generate_project
 ```
 
-Make sure dependencies are installed:
+Requires `git`; publishing also needs an authenticated `gh`. `sanity_check`,
+`validate_ignore`, `commit_gh`, `trigger_git_scan` and `folder_tree` are used
+when present.
 
-* `bash` (with `set -euo pipefail` support)
-* `jq` ≥ 1.6
-* `curl`
-* [`gum`](https://github.com/charmbracelet/gum) (optional, for nice tables)
+Homebrew installs the script and bundled Codex templates together using
+`Formula/generate_project.rb`. Its wrapper always uses Homebrew Bash.
 
----
+Run the offline integration checks with:
 
-## Configuration
-
-Create a `.env` file in the project root with your TFC/TFE settings:
-
-```env
-TFE_TOKEN=your-api-token
-TFE_HOST=app.terraform.io   # or your TFE hostname
+```sh
+python3 -m unittest discover -s tests -v
+shellcheck bin/generate_project.sh
 ```
-
-The controller will load `.env` automatically.
-
----
-
-## Usage
-
-```bash
-tfc_controller <command> [options]
-```
-
-### Commands
-
-#### validate
-
-Validate a spec file for org creation:
-
-```bash
-tfc_controller validate spec.json
-```
-
-Requires `.org.name` and `.org.email`.
-
----
-
-#### plan
-
-Plan org + project changes:
-
-```bash
-tfc_controller plan spec.json
-```
-
----
-
-#### apply
-
-Apply org + project changes:
-
-```bash
-tfc_controller apply spec.json --yes
-```
-
----
-
-#### ensure-org
-
-Ensure the org exists (dry-run optional):
-
-```bash
-tfc_controller ensure-org spec.json --dry-run
-```
-
----
-
-#### plan-projects
-
-Plan changes for projects only:
-
-```bash
-tfc_controller plan-projects spec.json
-```
-
----
-
-#### apply-projects
-
-Apply changes for projects only:
-
-```bash
-tfc_controller apply-projects spec.json --yes
-```
-
----
-
-#### export
-
-Export org data into JSON:
-
-```bash
-tfc_controller export --org my-org -o backup.json --profile full
-```
-
-Options:
-
-* `--org <name>` — Org name
-* `--spec <file>` — Spec file containing `.org.name`
-* `-o, --out <file>` — Output file (required)
-* `--profile` — `minimal` (default) or `full`
-
----
-
-#### show
-
-Pretty-print a prior export:
-
-```bash
-tfc_controller show --file backup.json --projects --workspaces
-```
-
-Sections:
-
-* `--projects` — Projects
-* `--workspaces` — Workspaces
-* `--variables` — Workspace variables
-* `--varsets` — Variable sets
-* `--registry` — Registry modules
-* `--tags` — Reserved tag keys
-* `--users` — Users + team memberships
-* `--teams` — Teams (core, memberships, project access)
-
-Filters:
-
-* `-p, --project "<name>"` — Filter by project
-* `-w, --workspace "<name>"` — Filter by workspace
-* `-t, --tag "<tag>"` — Filter by workspace tag
-* `-m, --module "<name>"` — Filter by registry module
-
----
-
-### Global Flags
-
-* `-h, --help` — Show help
-* `-V, --version` — Show version
-* `--no-color` — Disable ANSI colors (or set `NO_COLOR=1`)
-
----
-
-## Example Workflow
-
-1. Validate org spec:
-
-   ```bash
-   tfc_controller validate spec.json
-   ```
-
-2. Plan org + projects:
-
-   ```bash
-   tfc_controller plan spec.json
-   ```
-
-3. Apply org + projects:
-
-   ```bash
-   tfc_controller apply spec.json --yes
-   ```
-
-4. Export org state:
-
-   ```bash
-   tfc_controller export --org my-org -o org_full.json --profile full
-   ```
-
-5. Show all projects and workspaces:
-
-   ```bash
-   tfc_controller show --file org_full.json --projects --workspaces
-   ```
-
----
-
-## Notes
-
-* By default, `show` prints **projects + workspaces** if no section is provided.
-* Use `gum` for pretty tables, otherwise output falls back to `column -t`.
-* This tool is read/write safe: **validate/plan** before **apply**.
-
----
-
-## Roadmap
-
-* Add team ↔️ workspace access support
-* JSON → spec roundtrip (import/export parity)
-* Optional CSV export mode
-
----
-
-## License
-
-MIT © Raymon Epping
