@@ -8,7 +8,7 @@ generate_project --project f_Ray_grance --type node
 ```
 
 This creates `./f_Ray_grance`: type-specific starter files, `.gitignore` and
-`.dockerignore` from your global templates, a GPL-3.0 `LICENSE`, `README.md`,
+container ignore files from your global template, a GPL-3.0 `LICENSE`, `README.md`,
 an empty `.env`, Dependabot config, the matching `scan_on_pr` workflow, a
 `sanity_check` pre-commit hook, `.claude/`, root `AGENTS.md`,
 `.agents/skills/` and `.codex/config.toml`. It then makes the
@@ -19,7 +19,7 @@ first commit on `main` and creates the GitHub repository.
 | Option | Effect |
 | --- | --- |
 | `--version` | Print the installed `generate_project` version. |
-| `--type <docker\|node\|python\|terraform\|go>` | Starter files and Dependabot ecosystem. Go gets no Dockerfile. |
+| `--type <docker\|podman\|node\|python\|terraform\|go>` | Starter files and Dependabot ecosystem. Podman gets a `Containerfile`, scoped Make targets and `.containerignore`; Go gets no container files. |
 | `--prefix <prefix>` | Resource prefix (e.g. `srot`, stored as `srot-`) written into assistant instructions to scope container, VM and namespace operations. Works with both retrofit modes. |
 | `--private` | Create the GitHub repository as private (default public). |
 | `--no-github` | Commit locally only. |

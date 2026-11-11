@@ -5,7 +5,7 @@ set -euo pipefail
 usage() {
   cat <<'USAGE'
 Usage:
-  generate_project --project <name> [--type <docker|node|python|terraform|go>]
+  generate_project --project <name> [--type <docker|podman|node|python|terraform|go>]
                    [--prefix <prefix>] [--private] [--no-github] [--no-claude]
                    [--claude-template <dir>] [--no-codex] [--codex-template <dir>]
   generate_project --claude-only [<existing-project-dir>] [--prefix <prefix>]
@@ -14,7 +14,7 @@ Usage:
 
 Options:
   --project <name>          Create ./<name>, scaffold it, commit, and publish it on GitHub.
-  --type <type>             docker, node, python, terraform or go.
+  --type <type>             docker, podman, node, python, terraform or go.
   --prefix <prefix>         Resource prefix for containers, VMs and namespaces (e.g. srot or srot-).
                             Written into assistant instructions to scope resource operations.
   --private                 Create the GitHub repository as private (default: public).
@@ -41,6 +41,7 @@ AI folders and AGENTS.md / AGENTS.override.md are added to .gitignore,
 
 Types:
   docker     Minimal Dockerfile-only repo.
+  podman     Podman-first Containerfile and Makefile (build, run, clean).
   node       Minimal Node app with package.json and index.js.
   python     Minimal Python app with app.py.
   terraform  Minimal main.tf with required_version.
@@ -144,6 +145,15 @@ fi
 # Custom template paths may be relative to the invocation directory.
 if [[ -d "$CODEX_TEMPLATE" ]]; then CODEX_TEMPLATE="$(cd "$CODEX_TEMPLATE" && pwd)"; fi
 
+# A new Podman scaffold needs a concrete, project-scoped resource prefix even
+# when the caller omits --prefix. Normalize its project name to a safe default.
+if [[ "$TYPE" == "podman" && -z "$PREFIX" && "$CODEX_ONLY" != true && "$CLAUDE_ONLY" != true ]]; then
+  PREFIX="$(printf '%s' "$PROJECT_NAME" | LC_ALL=C tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9')"
+  [[ "$PREFIX" =~ ^[a-z] ]] || PREFIX="p${PREFIX}"
+  PREFIX="${PREFIX:0:12}"
+  echo "ℹ️ Using project-derived Podman resource prefix: ${PREFIX}- (check for collisions before use)"
+fi
+
 # Prefix: lowercase letters and digits, starting with a letter, always ending in "-".
 if [[ -n "$PREFIX" ]]; then
   PREFIX="${PREFIX%-}"
@@ -185,6 +195,7 @@ project_commands() {
     python) echo '- Run: `python app.py`.' ;;
     terraform) echo '- Check: `terraform fmt -check`, `terraform init -backend=false && terraform validate`.' ;;
     docker) echo '- Build: `podman build --format docker -t <name> .` (images must be arm64).' ;;
+    podman) echo '- Check Podman with `make check`; build with `make build`, run with `make run`, and remove this project image with `make clean`.' ;;
     go) echo '- Build: `make build`. Test: `make test`. Lint: `make lint`.' ;;
     *) echo '- Commands: <how to run, test and lint this project>.' ;;
   esac
@@ -428,7 +439,7 @@ if [[ ! "$PROJECT_NAME" =~ ^[A-Za-z0-9._-]+$ ]]; then
   exit 1
 fi
 case "$TYPE" in
-  ""|docker|node|python|terraform|go) ;;
+  ""|docker|podman|node|python|terraform|go) ;;
   *) echo "⚠️ Unknown project type '$TYPE'. Proceeding with generic scaffold." ;;
 esac
 if [[ -e "$PROJECT_NAME" && -n "$(ls -A "$PROJECT_NAME" 2>/dev/null)" ]]; then
@@ -486,6 +497,35 @@ EOF
     cat > Dockerfile <<'EOF'
 FROM alpine:3
 CMD ["sh","-c","echo hello"]
+EOF
+    ;;
+  podman)
+    echo "🌱 Creating Podman-first Containerfile and Makefile"
+    cat > Containerfile <<'EOF'
+FROM docker.io/library/alpine:3
+CMD ["sh", "-c", "echo hello from Podman"]
+EOF
+    cat > Makefile <<EOF
+.DEFAULT_GOAL := build
+
+PREFIX := ${PREFIX}
+IMAGE := \$(PREFIX)demo:local
+CONTAINER := \$(PREFIX)demo-run
+
+.PHONY: check build run clean
+
+check: ## Verify the Podman CLI is installed
+	@command -v podman >/dev/null 2>&1 || { echo "podman is required" >&2; exit 1; }
+	@podman --version
+
+build: check ## Build this project's Containerfile
+	@podman build --tag "\$(IMAGE)" --file Containerfile .
+
+run: build ## Run the demo container and remove it when it exits
+	@podman run --rm --name "\$(CONTAINER)" "\$(IMAGE)"
+
+clean: ## Remove only this project's generated image
+	@podman image rm "\$(IMAGE)"
 EOF
     ;;
   go)
@@ -617,6 +657,12 @@ EOF
   ensure_ai_ignored .dockerignore
 fi
 
+if [[ "$TYPE" == "podman" ]]; then
+  # Podman prefers .containerignore when both it and .dockerignore exist.
+  cp .dockerignore .containerignore
+  ensure_ai_ignored .containerignore
+fi
+
 # ✅ Validate resulting ignore files (quiet mode)
 if command -v validate_ignore &>/dev/null; then
   echo ""
@@ -648,6 +694,21 @@ Add a Dockerfile later only if you plan to run this CLI in containers.
 make build
 ./bin/$PROJECT_NAME -V
 
+EOF
+elif [[ "$TYPE" == "podman" ]]; then
+  cat > README.md <<EOF
+# $PROJECT_NAME
+
+Podman-first container scaffold. Its project resource prefix is \`${PREFIX}\`.
+Check that the prefix is unused before running the Make targets. On macOS,
+start your Podman machine before building or running the image.
+
+## Quickstart
+
+\`make check\` verifies the Podman CLI is installed. Then use \`make build\` to build
+the image, \`make run\` to run the short demo, and \`make clean\` to remove
+only this project's generated image. The run target removes its container on
+exit; the image remains until you clean it.
 EOF
 else
   cat > README.md <<EOF
@@ -690,7 +751,7 @@ updates:
       include: "scope"
 EOF
     ;;
-  docker)
+  docker|podman)
     cat > "$DEPENDABOT_FILE" <<'EOF'
 version: 2
 updates:
@@ -773,7 +834,7 @@ fi
 if command -v "$SANITY_CHECK_CMD" &>/dev/null; then
   echo "🧪 Running sanity_check..."
   find . \( -path ./.git -o -path ./.claude -o -path ./.agents -o -path ./.codex -o -path ./.impeccable -o -name node_modules \) -prune -o \
-    -type f \( -name "*.sh" -o -name "*.py" -o -name "*.js" -o -name "*.tf" -o -name "Dockerfile" -o -name "*.go" \) \
+    -type f \( -name "*.sh" -o -name "*.py" -o -name "*.js" -o -name "*.tf" -o -name "Dockerfile" -o -name "Containerfile" -o -name "*.go" \) \
     -exec "$SANITY_CHECK_CMD" --fix --report {} +
 else
   echo "ℹ️ $SANITY_CHECK_CMD not found — skipping"
@@ -789,7 +850,7 @@ if command -v "$SANITY_CHECK_CMD" &>/dev/null; then
   cat > "$HOOK_PATH" <<'EOF'
 #!/bin/bash
 set -euo pipefail
-STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.sh$|\.py$|\.js$|\.tf$|Dockerfile$|\.go$' || true)
+STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.sh$|\.py$|\.js$|\.tf$|Dockerfile$|Containerfile$|\.go$' || true)
 if [[ -n "$STAGED_FILES" ]]; then
   echo "🔍 Pre-commit: running sanity_check on staged files..."
   echo "$STAGED_FILES" | xargs sanity_check --fix --quiet

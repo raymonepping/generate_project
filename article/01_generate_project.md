@@ -82,8 +82,10 @@ assistant files and makes an initial Git commit on `main`. `--no-github`
 skips remote publication. It does not promise a completely offline run:
 the script still attempts to download the GPL-3.0 licence text.
 
-The supported types are Node, Python, Terraform, Docker and Go. They are
-deliberately small starting points. The Node test initially prints `ok`;
+The supported types are Node, Python, Terraform, Docker, Podman and Go. They are
+deliberately small starting points. The Podman scaffold uses a `Containerfile`,
+`.containerignore` and Make targets for building, running and removing its
+project-scoped image. The Node test initially prints `ok`;
 it is not evidence that an application has meaningful test coverage. The
 Go scaffold targets a native CLI, so it gets neither a Dockerfile nor a
 Docker ignore file.

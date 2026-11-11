@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Add a Podman project type with a native `Containerfile`, Make targets for
+  check/build/run/clean, a project-scoped default resource prefix, and
+  `.containerignore`.
+
 ## [2.2.0] - 2026-11-11
 
 ### Changed
