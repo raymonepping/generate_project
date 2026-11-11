@@ -33,7 +33,7 @@ The generator depends on shell utilities beyond Git: notably `awk`, `grep`,
 | `tpl/codex/` | First-party instructions, optional config and two focused skills; copied into the assistant's native discovery locations. No model, sandbox, approval or trust settings are imposed. |
 | External Claude template | Private `~/.config/generate_project/claude/` content; agents, skills, settings and instruction template. Missing templates degrade to minimal instructions with a warning. |
 | `tests/test_generate_project.py` | Offline integration tests using temporary HOME/workspaces, real Git, a blocked licence download and no optional global helpers. Tests run the system Bash explicitly. |
-| `Formula/generate_project.rb` | Installs `bin` and `tpl` together and writes a wrapper using Homebrew Bash. Source archives are pinned with SHA-256. Install/test blocks were exercised in a temporary prefix. |
+| `Formula/generate-project.rb` | Installs `bin`, `.version`, and `tpl` together and writes a wrapper using Homebrew Bash. Source archives are pinned with SHA-256. Install/test blocks were exercised in a temporary prefix. |
 | `.github/workflows/` | Secret scanning and tagged releases. No behavioral-test or ShellCheck workflow exists at the review baseline. |
 | Local `AGENTS.md`, `.agents/`, `.codex/` | Working-copy assistant context; ignored rather than distributed as project source. The committed `tpl/codex` content supplies future projects. |
 

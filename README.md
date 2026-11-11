@@ -113,7 +113,8 @@ The generator detects `commit_gh` (or copies its fallback), but its initial
 commit and GitHub publishing currently use `git` and `gh` directly.
 
 Homebrew installs the script, `.version`, and bundled Codex templates together
-using `Formula/generate_project.rb`. Its wrapper always uses Homebrew Bash.
+using `Formula/generate-project.rb`. Its wrapper always uses Homebrew Bash.
+Install the published tap package with `brew install raymonepping/tap/generate-project`.
 
 Run the offline integration checks with:
 
