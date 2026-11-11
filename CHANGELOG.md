@@ -7,13 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.3] - 2026-11-11
+
 ### Added
-- Add `generate_project --version`, sourced from `.version` in source and
-  Homebrew installations.
-- Add Codex project-context analysis that derives a managed instruction section
-  from repository evidence while preserving surrounding user guidance.
-- Install the bundled `project-context` skill when older private or custom
-  Codex templates do not provide it.
+
+- add version reporting and project context
+
+### Changed
+
+- ground generator article in all four earlier Medium posts
 
 ## [2.1.2] - 2026-11-03
 
