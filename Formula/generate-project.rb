@@ -3,7 +3,7 @@ class GenerateProject < Formula
   homepage "https://github.com/raymonepping/generate_project"
   version "2.2.0"
   url "https://github.com/raymonepping/generate_project/archive/refs/tags/v2.2.0.tar.gz"
-  sha256 "fbdfff8323583e3542177be28457a275ff66e47e0389db40fd0dce3f2ea26341"
+  sha256 "ae3f7545979550784b6d0e8ee14e9bcedb73a6fb62aad1ce9452d5c272050b1b"
   license "GPL-3.0-only"
 
   depends_on "bash"
