@@ -32,6 +32,7 @@ Options:
                             With --project <dir>, retrofit that existing directory.
                             A positional directory and --project cannot be combined.
   -h, --help                Show this help.
+  --version                 Show the installed generate_project version.
 
 The .claude folder gets agents/, skills/, settings.local.json and a starter CLAUDE.md.
 Codex gets root AGENTS.md, .agents/skills/ and optional .codex/config.toml.
@@ -66,9 +67,17 @@ CLAUDE_TEMPLATE="${GENERATE_PROJECT_CLAUDE_TEMPLATE:-$HOME/.config/generate_proj
 
 # Resolve bundled assets before entering the generated project.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BUNDLED_CODEX_TEMPLATE="$SCRIPT_DIR/../tpl/codex"
+VERSION="unknown"
+for version_file in "$SCRIPT_DIR/.version" "$SCRIPT_DIR/../.version"; do
+  if [[ -f "$version_file" ]]; then
+    IFS= read -r VERSION < "$version_file"
+    break
+  fi
+done
 CODEX_TEMPLATE="${GENERATE_PROJECT_CODEX_TEMPLATE:-$HOME/.config/generate_project/codex}"
-if [[ -z "${GENERATE_PROJECT_CODEX_TEMPLATE:-}" && ! -d "$CODEX_TEMPLATE" && -d "$SCRIPT_DIR/../tpl/codex" ]]; then
-  CODEX_TEMPLATE="$SCRIPT_DIR/../tpl/codex"
+if [[ -z "${GENERATE_PROJECT_CODEX_TEMPLATE:-}" && ! -d "$CODEX_TEMPLATE" && -d "$BUNDLED_CODEX_TEMPLATE" ]]; then
+  CODEX_TEMPLATE="$BUNDLED_CODEX_TEMPLATE"
 fi
 
 while [[ $# -gt 0 ]]; do
@@ -87,6 +96,7 @@ while [[ $# -gt 0 ]]; do
       if [[ -n "${2:-}" && "${2:0:1}" != "-" ]]; then CODEX_ONLY_DIR="$2"; CODEX_ONLY_DIR_SET=true; shift 2; else shift; fi
       ;;
     --claude-template) CLAUDE_TEMPLATE="${2:-}"; shift 2 || { usage; exit 1; } ;;
+    --version) printf 'generate_project %s\n' "$VERSION"; exit 0 ;;
     --claude-only)
       CLAUDE_ONLY=true
       if [[ -n "${2:-}" && "${2:0:1}" != "-" ]]; then CLAUDE_ONLY_DIR="$2"; CLAUDE_ONLY_DIR_SET=true; shift 2; else shift; fi
@@ -308,6 +318,21 @@ install_codex_dir() {
       fi
       cp -RL "$src" "$target"
     done
+  fi
+  # Keep the bundled project-analysis workflow available even when a private
+  # or custom template predates it. Never replace a project-owned skill.
+  src="$BUNDLED_CODEX_TEMPLATE/skills/project-context"
+  target="$dir/.agents/skills/project-context"
+  if [[ -d "$src" && -f "$src/SKILL.md" ]]; then
+    if [[ -L "$target" && ! -e "$target" ]] || [[ -f "$target" && ! -d "$target" ]]; then
+      rm -f -- "$target"
+      repaired=$((repaired + 1))
+    fi
+    if [[ ! -e "$target" && ! -L "$target" ]]; then
+      mkdir -p "$dir/.agents/skills"
+      cp -RL "$src" "$target"
+      added=$((added + 1))
+    fi
   fi
   if [[ -f "$CODEX_TEMPLATE/config.toml" && ! -e "$dir/.codex/config.toml" && ! -L "$dir/.codex/config.toml" ]]; then
     mkdir -p "$dir/.codex"

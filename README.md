@@ -18,6 +18,7 @@ first commit on `main` and creates the GitHub repository.
 
 | Option | Effect |
 | --- | --- |
+| `--version` | Print the installed `generate_project` version. |
 | `--type <docker\|node\|python\|terraform\|go>` | Starter files and Dependabot ecosystem. Go gets no Dockerfile. |
 | `--prefix <prefix>` | Resource prefix (e.g. `srot`, stored as `srot-`) written into assistant instructions to scope container, VM and namespace operations. Works with both retrofit modes. |
 | `--private` | Create the GitHub repository as private (default public). |
@@ -54,8 +55,9 @@ project, run `generate_project --claude-only <dir>`.
 
 Codex uses root `AGENTS.md`, `.agents/skills/`, and optional
 `.codex/config.toml`. The bundled template includes `project-checks` and
-`scoped-resources` skills. It inherits your personal model, approvals, sandbox,
-and MCP settings. Claude hooks and agents require translation before use in Codex.
+`scoped-resources` skills, plus `project-context` for evidence-based project
+analysis. It inherits your personal model, approvals, sandbox, and MCP settings.
+Claude hooks and agents require translation before use in Codex.
 
 ```sh
 generate_project --codex-only ./existing-project --type terraform --prefix demo
@@ -76,6 +78,15 @@ config, with the same prefix repair as Claude. A new prefix is inserted after
 when neither marker exists. An existing different prefix remains unchanged. See
 [Codex support](docs/codex-support.md) for discovery, migration and privacy details.
 
+Project-specific Codex context is generated on request, not by invoking a model
+from the scaffold script. In a generated project, ask Codex to run
+`$project-context` to inspect the README, manifests, build files, CI, and source
+tree, then add or refresh a bounded managed section in the active root
+`AGENTS.md`. It preserves surrounding instructions, avoids secret files, and
+labels declared commands separately from checks actually run. Retrofit does
+not overwrite existing skills; it adds the bundled workflow if an older private
+or custom template does not provide it.
+
 ## Keeping AI tooling private
 
 `.claude/`, `.agents/`, `.codex/`, `.impeccable/`, `AGENTS.md` and
@@ -92,6 +103,7 @@ ignore `.claude/` gets it in `.git/info/exclude`, which stays local.
 mkdir -p ~/.config/generate_project/codex
 cp -R tpl/codex/. ~/.config/generate_project/codex/
 cp bin/generate_project.sh /usr/local/bin/generate_project
+cp .version /usr/local/bin/.version
 chmod 755 /usr/local/bin/generate_project
 ```
 
@@ -100,8 +112,8 @@ Requires `git`; publishing also needs an authenticated `gh`. `sanity_check`,
 The generator detects `commit_gh` (or copies its fallback), but its initial
 commit and GitHub publishing currently use `git` and `gh` directly.
 
-Homebrew installs the script and bundled Codex templates together using
-`Formula/generate_project.rb`. Its wrapper always uses Homebrew Bash.
+Homebrew installs the script, `.version`, and bundled Codex templates together
+using `Formula/generate_project.rb`. Its wrapper always uses Homebrew Bash.
 
 Run the offline integration checks with:
 

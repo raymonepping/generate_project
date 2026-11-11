@@ -7,6 +7,7 @@ __PREFIX__
 __COMMANDS__
 - Read `README.md` and the actual build configuration before choosing checks.
 - Local reusable workflows are in `.agents/skills/`.
+- Use `$project-context` when asked to analyze or refresh project-specific guidance.
 
 ## Project conventions
 

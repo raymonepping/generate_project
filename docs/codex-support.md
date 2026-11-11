@@ -35,11 +35,34 @@ An existing `AGENTS.override.md` is left untouched and suppresses generation
 of a competing `AGENTS.md`. Copies dereference template skill symlinks so each
 project remains independent of the template.
 
-The bundled skills cover meaningful stack checks and prefix-scoped resource
-operations. They do not add dependencies, connect services, set a model, change
+The bundled skills cover project-context analysis, stack checks, and
+prefix-scoped resource operations. `project-context` is also installed from the
+bundled template when a selected private or custom template does not yet contain
+it; an existing project-owned skill with that name is preserved. It is invoked
+explicitly (for example, `$project-context`) and maintains a bounded,
+evidence-based section inside the active root instruction file. The generator
+does not call a model or analyze project files itself.
+
+The skills do not add dependencies, connect services, set a model, change
 approval settings, or grant resource permissions. The empty configuration
 inherits personal settings. Trust the project through Codex's normal flow to
 enable project configuration; the generator does not edit global trust.
+
+### Project-specific context
+
+Ask Codex to run `$project-context` after a scaffold is created or when an
+existing project needs its instructions refreshed. The skill inspects repository
+documentation and configuration, avoids secret files and command execution,
+and distinguishes commands declared in files from checks actually run. It
+preserves instructions outside its marked section and refuses malformed markers.
+It does not guess missing architecture or validations. This keeps the Bash
+scaffolder deterministic and avoids silently invoking a model during project
+creation.
+
+The generated section belongs in `AGENTS.md` (or `AGENTS.override.md` when that
+is active), since arbitrary documentation files are not automatically loaded as
+Codex instructions. Retrofit continues to preserve existing skills; the bundled
+`project-context` skill is added if a selected older template lacks it.
 
 ## Mapping the Claude workspace
 

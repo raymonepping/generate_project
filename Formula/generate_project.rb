@@ -9,7 +9,7 @@ class GenerateProject < Formula
   depends_on "git"
 
   def install
-    libexec.install "bin", "tpl"
+    libexec.install "bin", "tpl", ".version"
     bin.mkpath
 
     (bin/"generate_project").write <<~SH

@@ -195,13 +195,13 @@ attempts that download. Optional scan workflows come from HOME and may be absent
 
 Publishing failures leave an already-created local project; there is no
 resume mode or rollback transaction. `folder_tree` runs after the initial
-commit, so its output may remain uncommitted. The script has no version flag
-for comparing the installed binary to `.version`.
+commit, so its output may remain uncommitted. At this review's 2.1.2 baseline,
+the script had no version flag for comparing the installed binary to `.version`.
 
 **Recommended change:** make repository owner/module paths configurable,
 clarify minimal versus production-ready scaffolds, report optional omissions,
-and document recovery from a failed remote publication. Add a version command
-and an installation parity check before broadening language support.
+and document recovery from a failed remote publication. The version command is
+implemented in 2.1.3; installation parity checks remain a follow-up.
 
 ### 9. Unrelated inherited files remain — housekeeping
 
