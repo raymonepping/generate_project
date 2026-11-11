@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-11-11
+
+### Changed
+
+- record Podman type in v2.3.0 changelog
+
 ## [2.3.0] - 2026-11-11
 
 ### Added
@@ -14,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add a Podman project type with a native `Containerfile`, Make targets for
   check/build/run/clean, a project-scoped default resource prefix, and
   `.containerignore`.
+- Allow `--type` to add missing starter files to an existing nonempty project
+  without replacing files or initializing/committing/publishing a repository.
 
 ## [2.2.0] - 2026-11-11
 

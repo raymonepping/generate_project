@@ -14,12 +14,21 @@ an empty `.env`, Dependabot config, the matching `scan_on_pr` workflow, a
 `.agents/skills/` and `.codex/config.toml`. It then makes the
 first commit on `main` and creates the GitHub repository.
 
+If `--project` names an existing nonempty directory, `--type` adds only the
+missing starter files for that type. Existing files are kept, and this
+additive mode does not initialize Git, commit, publish, or rewrite the README
+and project settings. For example:
+
+```sh
+generate_project --project vault_lab_index --type node
+```
+
 ## Options
 
 | Option | Effect |
 | --- | --- |
 | `--version` | Print the installed `generate_project` version. |
-| `--type <docker\|podman\|node\|python\|terraform\|go>` | Starter files and Dependabot ecosystem. Podman gets a `Containerfile`, scoped Make targets and `.containerignore`; Go gets no container files. |
+| `--type <docker\|podman\|node\|python\|terraform\|go>` | Starter files and Dependabot ecosystem. In an existing project, adds only missing type files. Podman gets a `Containerfile`, scoped Make targets and `.containerignore`; Go gets no container files. |
 | `--prefix <prefix>` | Resource prefix (e.g. `srot`, stored as `srot-`) written into assistant instructions to scope container, VM and namespace operations. Works with both retrofit modes. |
 | `--private` | Create the GitHub repository as private (default public). |
 | `--no-github` | Commit locally only. |

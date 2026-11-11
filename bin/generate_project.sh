@@ -13,8 +13,8 @@ Usage:
   generate_project --project <existing-project-dir> --codex-only [--prefix <prefix>]
 
 Options:
-  --project <name>          Create ./<name>, scaffold it, commit, and publish it on GitHub.
-  --type <type>             docker, podman, node, python, terraform or go.
+  --project <name>          Create ./<name>, or add missing type files to an existing project.
+  --type <type>             docker, podman, node, python, terraform or go; existing files are preserved.
   --prefix <prefix>         Resource prefix for containers, VMs and namespaces (e.g. srot or srot-).
                             Written into assistant instructions to scope resource operations.
   --private                 Create the GitHub repository as private (default: public).
@@ -147,7 +147,7 @@ if [[ -d "$CODEX_TEMPLATE" ]]; then CODEX_TEMPLATE="$(cd "$CODEX_TEMPLATE" && pw
 
 # A new Podman scaffold needs a concrete, project-scoped resource prefix even
 # when the caller omits --prefix. Normalize its project name to a safe default.
-if [[ "$TYPE" == "podman" && -z "$PREFIX" && "$CODEX_ONLY" != true && "$CLAUDE_ONLY" != true ]]; then
+if [[ "$TYPE" == "podman" && -z "$PREFIX" && "$CODEX_ONLY" != true && "$CLAUDE_ONLY" != true && ( ! -d "$PROJECT_NAME" || -z "$(ls -A "$PROJECT_NAME" 2>/dev/null)" ) ]]; then
   PREFIX="$(printf '%s' "$PROJECT_NAME" | LC_ALL=C tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9')"
   [[ "$PREFIX" =~ ^[a-z] ]] || PREFIX="p${PREFIX}"
   PREFIX="${PREFIX:0:12}"
@@ -199,6 +199,16 @@ project_commands() {
     go) echo '- Build: `make build`. Test: `make test`. Lint: `make lint`.' ;;
     *) echo '- Commands: <how to run, test and lint this project>.' ;;
   esac
+}
+
+# Existing project type additions never replace files already owned by the repo.
+type_file_available() {
+  local path="$1"
+  if [[ "$TYPE_RETROFIT" == true && ( -e "$path" || -L "$path" ) ]]; then
+    echo "↪ Keeping existing $path"
+    return 1
+  fi
+  return 0
 }
 
 # The instruction line that states the resource prefix, or asks for one.
@@ -440,16 +450,36 @@ if [[ ! "$PROJECT_NAME" =~ ^[A-Za-z0-9._-]+$ ]]; then
 fi
 case "$TYPE" in
   ""|docker|podman|node|python|terraform|go) ;;
-  *) echo "⚠️ Unknown project type '$TYPE'. Proceeding with generic scaffold." ;;
+  *)
+    if [[ -d "$PROJECT_NAME" && -n "$(ls -A "$PROJECT_NAME" 2>/dev/null)" ]]; then
+      echo "❌ Cannot add unknown type '$TYPE' to an existing project."
+      exit 1
+    fi
+    echo "⚠️ Unknown project type '$TYPE'. Proceeding with generic scaffold."
+    ;;
 esac
-if [[ -e "$PROJECT_NAME" && -n "$(ls -A "$PROJECT_NAME" 2>/dev/null)" ]]; then
-  echo "❌ '$PROJECT_NAME' already exists and is not empty. Use --claude-only or --codex-only to add assistant support."
+TYPE_RETROFIT=false
+if [[ -d "$PROJECT_NAME" && -n "$(ls -A "$PROJECT_NAME" 2>/dev/null)" ]]; then
+  if [[ -z "$TYPE" ]]; then
+    echo "❌ '$PROJECT_NAME' already exists and is not empty. Set --type to add missing type files, or use --claude-only/--codex-only for assistant support."
+    exit 1
+  fi
+  TYPE_RETROFIT=true
+  if [[ "$TYPE" == "podman" && -z "$PREFIX" ]]; then
+    echo "❌ Adding Podman files to an existing project requires --prefix. Use the prefix already recorded for this project."
+    exit 1
+  fi
+  echo "ℹ️ Existing project detected. Adding missing $TYPE files only; no files will be overwritten or committed."
+elif [[ -e "$PROJECT_NAME" ]]; then
+  echo "❌ '$PROJECT_NAME' exists and is not a directory."
   exit 1
 fi
 
 # 🔧 Prerequisites
-command -v git &>/dev/null || { echo "❌ Required tool missing: git"; exit 1; }
-if [[ "$USE_GITHUB" == true ]]; then
+if [[ "$TYPE_RETROFIT" != true ]]; then
+  command -v git &>/dev/null || { echo "❌ Required tool missing: git"; exit 1; }
+fi
+if [[ "$TYPE_RETROFIT" != true && "$USE_GITHUB" == true ]]; then
   command -v gh &>/dev/null || { echo "❌ Required tool missing: gh (or use --no-github)"; exit 1; }
   # --- GitHub authentication check ---
   if ! gh auth status 2>&1 | grep -q "Logged in to github.com"; then
@@ -466,16 +496,19 @@ cd "$PROJECT_NAME"
 # --- Language/Type specific bootstraps ---
 case "$TYPE" in
   terraform)
-    echo "🌱 Creating minimal main.tf with required_version"
-    cat > main.tf <<'EOF'
+    if type_file_available main.tf; then
+      echo "🌱 Creating minimal main.tf with required_version"
+      cat > main.tf <<'EOF'
 terraform {
   required_version = ">= 1.0.0"
 }
 EOF
+    fi
     ;;
   node)
-    echo "🌱 Creating minimal Node scaffold"
-    cat > package.json <<'EOF'
+    if type_file_available package.json; then
+      echo "🌱 Creating minimal Node package.json"
+      cat > package.json <<'EOF'
 {
   "name": "app",
   "version": "0.1.0",
@@ -486,25 +519,36 @@ EOF
   }
 }
 EOF
-    echo "console.log('hello');" > index.js
+    fi
+    if type_file_available index.js; then
+      echo "console.log('hello');" > index.js
+    fi
     ;;
   python)
-    echo "🌱 Creating minimal Python scaffold"
-    echo "print('hello')" > app.py
+    if type_file_available app.py; then
+      echo "🌱 Creating minimal Python scaffold"
+      echo "print('hello')" > app.py
+    fi
     ;;
   docker)
-    echo "🌱 Creating minimal Dockerfile"
-    cat > Dockerfile <<'EOF'
+    if type_file_available Dockerfile; then
+      echo "🌱 Creating minimal Dockerfile"
+      cat > Dockerfile <<'EOF'
 FROM alpine:3
 CMD ["sh","-c","echo hello"]
 EOF
+    fi
     ;;
   podman)
-    echo "🌱 Creating Podman-first Containerfile and Makefile"
-    cat > Containerfile <<'EOF'
+    if type_file_available Containerfile; then
+      echo "🌱 Creating Podman Containerfile"
+      cat > Containerfile <<'EOF'
 FROM docker.io/library/alpine:3
 CMD ["sh", "-c", "echo hello from Podman"]
 EOF
+    fi
+    if type_file_available Makefile; then
+      echo "🌱 Creating Podman Makefile"
     cat > Makefile <<EOF
 .DEFAULT_GOAL := build
 
@@ -527,6 +571,7 @@ run: build ## Run the demo container and remove it when it exits
 clean: ## Remove only this project's generated image
 	@podman image rm "\$(IMAGE)"
 EOF
+    fi
     ;;
   go)
     echo "🌱 Creating minimal Go scaffold (no Docker)"
@@ -534,15 +579,18 @@ EOF
     GOMODULE_PATH="github.com/raymonepping/${PROJECT_NAME}"
 
     # go.mod
-    cat > go.mod <<EOF
+    if type_file_available go.mod; then
+      cat > go.mod <<EOF
 module ${GOMODULE_PATH}
 
 go ${GO_VERSION}
 EOF
+    fi
 
     # main.go
-    mkdir -p "cmd/${PROJECT_NAME}"
-    cat > "cmd/${PROJECT_NAME}/main.go" <<'EOF'
+    if type_file_available "cmd/${PROJECT_NAME}/main.go"; then
+      mkdir -p "cmd/${PROJECT_NAME}"
+      cat > "cmd/${PROJECT_NAME}/main.go" <<'EOF'
 package main
 
 import (
@@ -565,9 +613,11 @@ func main() {
 	}
 }
 EOF
+    fi
 
     # Makefile
-    cat > Makefile <<'EOF'
+    if type_file_available Makefile; then
+      cat > Makefile <<'EOF'
 APP := $(shell basename $(CURDIR))
 GOFLAGS := -trimpath
 LDFLAGS := -s -w -X 'main.Version=$(shell git describe --tags --always 2>/dev/null || echo dev)'
@@ -595,9 +645,11 @@ lint:
 clean:
 	rm -rf bin
 EOF
+    fi
 
     # .golangci.yml
-    cat > .golangci.yml <<'EOF'
+    if type_file_available .golangci.yml; then
+      cat > .golangci.yml <<'EOF'
 run:
   timeout: 3m
 linters:
@@ -610,8 +662,29 @@ linters:
 issues:
   exclude-use-default: false
 EOF
+    fi
     ;;
 esac
+
+if [[ "$TYPE_RETROFIT" == true ]]; then
+  if [[ "$TYPE" == "podman" ]] && type_file_available .containerignore; then
+    if [[ -f .dockerignore ]]; then
+      cp .dockerignore .containerignore
+    elif [[ -f "$DEFAULT_DOCKERIGNORE" ]]; then
+      cp "$DEFAULT_DOCKERIGNORE" .containerignore
+    else
+      cat > .containerignore <<'EOF'
+.git
+.github
+node_modules
+__pycache__
+EOF
+    fi
+    ensure_ai_ignored .containerignore
+  fi
+  echo "✅ Added missing $TYPE starter files in $PWD. Existing files, project settings, Git history, and remotes were left untouched."
+  exit 0
+fi
 
 echo "📁 Created project: $PROJECT_NAME"
 
