@@ -54,9 +54,11 @@ project, run `generate_project --claude-only <dir>`.
 ## Codex support
 
 Codex uses root `AGENTS.md`, `.agents/skills/`, and optional
-`.codex/config.toml`. The bundled template includes `project-checks` and
-`scoped-resources` skills, plus `project-context` for evidence-based project
-analysis. It inherits your personal model, approvals, sandbox, and MCP settings.
+`.codex/config.toml`. The bundled template includes `project-checks`,
+`scoped-resources`, and `project-context`, plus the `frontend-design` and
+`stop-slop` skills. The latter two are third-party MIT-licensed skills, with
+their license files kept alongside the instructions. It inherits your personal
+model, approvals, sandbox, and MCP settings.
 Claude hooks and agents require translation before use in Codex.
 
 ```sh

@@ -35,8 +35,10 @@ An existing `AGENTS.override.md` is left untouched and suppresses generation
 of a competing `AGENTS.md`. Copies dereference template skill symlinks so each
 project remains independent of the template.
 
-The bundled skills cover project-context analysis, stack checks, and
-prefix-scoped resource operations. `project-context` is also installed from the
+The bundled skills cover project-context analysis, stack checks,
+prefix-scoped resource operations, frontend design, and prose editing. The
+`frontend-design` and `stop-slop` skills come from third-party repositories;
+their MIT license files are included in each copy. `project-context` is also installed from the
 bundled template when a selected private or custom template does not yet contain
 it; an existing project-owned skill with that name is preserved. It is invoked
 explicitly (for example, `$project-context`) and maintains a bounded,

@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-11-11
+
+### Changed
+
+- normalize Homebrew formula for v2.1.3
+
+## [2.2.0] - 2026-11-11
+
+### Added
+
+- Bundle the `frontend-design` and `stop-slop` Codex skills in the default
+  template so generated and retrofitted projects receive them.
+- Document the third-party skills and their MIT licenses.
+
+### Changed
+
+- Bump the generator and Homebrew formula to 2.2.0.
+
 ## [2.1.3] - 2026-11-11
 
 ### Added
