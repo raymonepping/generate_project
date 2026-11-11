@@ -1,8 +1,8 @@
 class GenerateProject < Formula
   desc "Scaffold projects with local Claude Code and Codex workspaces"
   homepage "https://github.com/raymonepping/generate_project"
-  url "https://github.com/raymonepping/generate_project/archive/refs/tags/v2.1.2.tar.gz"
-  sha256 "c497670941e0588eea46523db076d171497da577eca4d3b2241c4c39483debd5"
+  url "https://github.com/raymonepping/generate_project/archive/refs/tags/v2.1.3.tar.gz"
+  sha256 "fbdfff8323583e3542177be28457a275ff66e47e0389db40fd0dce3f2ea26341"
   license "GPL-3.0-only"
 
   depends_on "bash"
