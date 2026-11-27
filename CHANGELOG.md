@@ -11,7 +11,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- add Bob support (.bob/mcp.json, .bob/custom_modes.yaml, --bob-only, --no-bob)
+- Add Bob support: new projects get `.bob/mcp.json` and `.bob/custom_modes.yaml`
+  from the bundled `tpl/bob` template (or `~/.config/generate_project/bob`).
+  Bob already reads the root `AGENTS.md` and `.agents/skills/`, so nothing is
+  duplicated under `.bob`.
+- Add `--no-bob`, `--bob-template <dir>`, `--bob-only [<dir>]` and the
+  `GENERATE_PROJECT_BOB_TEMPLATE` override. Retrofit never overwrites files.
+
+### Changed
+
+- Treat `.bob/` as local AI tooling: it is ignored in `.gitignore`,
+  `.dockerignore`, `.containerignore` and `~/.gitignore_global`, skipped by
+  `sanity_check`, and refused by the first-commit guard.
+- Formula: describe Bob, add `--bob-only` to the caveats, and test the version,
+  `project-context` and Bob output.
 
 ## [2.4.0] - 2026-11-11
 
