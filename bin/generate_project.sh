@@ -8,8 +8,10 @@ Usage:
   generate_project --project <name> [--type <docker|podman|node|python|terraform|go>]
                    [--prefix <prefix>] [--private] [--no-github] [--no-claude]
                    [--claude-template <dir>] [--no-codex] [--codex-template <dir>]
+                   [--no-bob] [--bob-template <dir>]
   generate_project --claude-only [<existing-project-dir>] [--prefix <prefix>]
   generate_project --codex-only [<existing-project-dir>] [--type <type>] [--prefix <prefix>]
+  generate_project --bob-only [<existing-project-dir>] [--bob-template <dir>]
   generate_project --project <existing-project-dir> --codex-only [--prefix <prefix>]
 
 Options:
@@ -31,11 +33,18 @@ Options:
                             Preserves existing files; --type sets starter commands.
                             With --project <dir>, retrofit that existing directory.
                             A positional directory and --project cannot be combined.
+  --no-bob                  Do not add a .bob folder.
+  --bob-template <dir>      Bob template (default: ~/.config/generate_project/bob,
+                            then bundled tpl/bob; override: $GENERATE_PROJECT_BOB_TEMPLATE).
+  --bob-only [<dir>]        Add or repair .bob in an existing project (default: current dir).
+                            Never overwrites existing files. Works with --project <dir>.
   -h, --help                Show this help.
   --version                 Show the installed generate_project version.
 
 The .claude folder gets agents/, skills/, settings.local.json and a starter CLAUDE.md.
 Codex gets root AGENTS.md, .agents/skills/ and optional .codex/config.toml.
+Bob gets .bob/mcp.json and .bob/custom_modes.yaml; it reads the root AGENTS.md and
+.agents/skills/ that Codex support creates, so those are not duplicated under .bob.
 AI folders and AGENTS.md / AGENTS.override.md are added to .gitignore,
 .dockerignore and ~/.gitignore_global, and the first commit refuses to include them.
 
@@ -57,6 +66,10 @@ VISIBILITY="public"
 USE_GITHUB=true
 USE_CLAUDE=true
 USE_CODEX=true
+USE_BOB=true
+BOB_ONLY=false
+BOB_ONLY_DIR="."
+BOB_ONLY_DIR_SET=false
 CODEX_ONLY=false
 CODEX_ONLY_DIR="."
 CODEX_ONLY_DIR_SET=false
@@ -69,6 +82,7 @@ CLAUDE_TEMPLATE="${GENERATE_PROJECT_CLAUDE_TEMPLATE:-$HOME/.config/generate_proj
 # Resolve bundled assets before entering the generated project.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUNDLED_CODEX_TEMPLATE="$SCRIPT_DIR/../tpl/codex"
+BUNDLED_BOB_TEMPLATE="$SCRIPT_DIR/../tpl/bob"
 VERSION="unknown"
 for version_file in "$SCRIPT_DIR/.version" "$SCRIPT_DIR/../.version"; do
   if [[ -f "$version_file" ]]; then
@@ -79,6 +93,10 @@ done
 CODEX_TEMPLATE="${GENERATE_PROJECT_CODEX_TEMPLATE:-$HOME/.config/generate_project/codex}"
 if [[ -z "${GENERATE_PROJECT_CODEX_TEMPLATE:-}" && ! -d "$CODEX_TEMPLATE" && -d "$BUNDLED_CODEX_TEMPLATE" ]]; then
   CODEX_TEMPLATE="$BUNDLED_CODEX_TEMPLATE"
+fi
+BOB_TEMPLATE="${GENERATE_PROJECT_BOB_TEMPLATE:-$HOME/.config/generate_project/bob}"
+if [[ -z "${GENERATE_PROJECT_BOB_TEMPLATE:-}" && ! -d "$BOB_TEMPLATE" && -d "$BUNDLED_BOB_TEMPLATE" ]]; then
+  BOB_TEMPLATE="$BUNDLED_BOB_TEMPLATE"
 fi
 
 while [[ $# -gt 0 ]]; do
@@ -91,6 +109,12 @@ while [[ $# -gt 0 ]]; do
     --no-github) USE_GITHUB=false; shift ;;
     --no-claude) USE_CLAUDE=false; shift ;;
     --no-codex) USE_CODEX=false; shift ;;
+    --no-bob) USE_BOB=false; shift ;;
+    --bob-template) BOB_TEMPLATE="${2:-}"; shift 2 || { usage; exit 1; } ;;
+    --bob-only)
+      BOB_ONLY=true
+      if [[ -n "${2:-}" && "${2:0:1}" != "-" ]]; then BOB_ONLY_DIR="$2"; BOB_ONLY_DIR_SET=true; shift 2; else shift; fi
+      ;;
     --codex-template) CODEX_TEMPLATE="${2:-}"; shift 2 || { usage; exit 1; } ;;
     --codex-only)
       CODEX_ONLY=true
@@ -109,6 +133,8 @@ while [[ $# -gt 0 ]]; do
         CLAUDE_ONLY_DIR="$1"; CLAUDE_ONLY_DIR_SET=true; shift
       elif [[ "$CODEX_ONLY" == true && "$CODEX_ONLY_DIR_SET" == false && "${1:0:1}" != "-" ]]; then
         CODEX_ONLY_DIR="$1"; CODEX_ONLY_DIR_SET=true; shift
+      elif [[ "$BOB_ONLY" == true && "$BOB_ONLY_DIR_SET" == false && "${1:0:1}" != "-" ]]; then
+        BOB_ONLY_DIR="$1"; BOB_ONLY_DIR_SET=true; shift
       else
         echo "❌ Unknown argument: $1"; usage; exit 1
       fi
@@ -116,12 +142,20 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ "$CLAUDE_ONLY" == true && "$CODEX_ONLY" == true ]]; then
-  echo "❌ Use --claude-only and --codex-only separately."
+ONLY_MODES=0
+for only in "$CLAUDE_ONLY" "$CODEX_ONLY" "$BOB_ONLY"; do
+  [[ "$only" == true ]] && ONLY_MODES=$((ONLY_MODES + 1))
+done
+if [[ "$ONLY_MODES" -gt 1 ]]; then
+  echo "❌ Use --claude-only, --codex-only and --bob-only separately."
   exit 1
 fi
 if [[ "$CODEX_ONLY" == true && "$USE_CODEX" == false ]]; then
   echo "❌ --codex-only cannot be combined with --no-codex."
+  exit 1
+fi
+if [[ "$BOB_ONLY" == true && "$USE_BOB" == false ]]; then
+  echo "❌ --bob-only cannot be combined with --no-bob."
   exit 1
 fi
 # In retrofit mode, --project names the existing target, never the parent cwd.
@@ -139,15 +173,22 @@ if [[ -n "$PROJECT_NAME" ]]; then
       exit 1
     fi
     CLAUDE_ONLY_DIR="$PROJECT_NAME"
+  elif [[ "$BOB_ONLY" == true ]]; then
+    if [[ "$BOB_ONLY_DIR_SET" == true ]]; then
+      echo "❌ Use either --project <dir> or --bob-only <dir>, not both."
+      exit 1
+    fi
+    BOB_ONLY_DIR="$PROJECT_NAME"
   fi
 fi
 
 # Custom template paths may be relative to the invocation directory.
 if [[ -d "$CODEX_TEMPLATE" ]]; then CODEX_TEMPLATE="$(cd "$CODEX_TEMPLATE" && pwd)"; fi
+if [[ -d "$BOB_TEMPLATE" ]]; then BOB_TEMPLATE="$(cd "$BOB_TEMPLATE" && pwd)"; fi
 
 # A new Podman scaffold needs a concrete, project-scoped resource prefix even
 # when the caller omits --prefix. Normalize its project name to a safe default.
-if [[ "$TYPE" == "podman" && -z "$PREFIX" && "$CODEX_ONLY" != true && "$CLAUDE_ONLY" != true && ( ! -d "$PROJECT_NAME" || -z "$(ls -A "$PROJECT_NAME" 2>/dev/null)" ) ]]; then
+if [[ "$TYPE" == "podman" && -z "$PREFIX" && "$CODEX_ONLY" != true && "$CLAUDE_ONLY" != true && "$BOB_ONLY" != true && ( ! -d "$PROJECT_NAME" || -z "$(ls -A "$PROJECT_NAME" 2>/dev/null)" ) ]]; then
   PREFIX="$(printf '%s' "$PROJECT_NAME" | LC_ALL=C tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9')"
   [[ "$PREFIX" =~ ^[a-z] ]] || PREFIX="p${PREFIX}"
   PREFIX="${PREFIX:0:12}"
@@ -170,7 +211,7 @@ DEFAULT_DOCKERIGNORE="$HOME/.dockerignore_global"
 COMMIT_SCRIPT_NAME="commit_gh"
 COMMIT_SCRIPT_FALLBACK="$HOME/bin/commit_gh"
 # Local AI tooling: never committed, never sent into image builds.
-AI_TOOL_DIRS=(.claude/ .agents/ .codex/ .impeccable/ AGENTS.md AGENTS.override.md)
+AI_TOOL_DIRS=(.claude/ .agents/ .codex/ .bob/ .impeccable/ AGENTS.md AGENTS.override.md)
 
 # Append the AI tooling block to an ignore file, once.
 ensure_ai_ignored() {
@@ -386,9 +427,35 @@ install_codex_dir() {
   echo "🤖 Codex ready in $dir ($added added, $repaired repaired)"
 }
 
+# Bob reads the root AGENTS.md and .agents/skills/ that Codex support creates, so
+# .bob only holds what is Bob-specific: MCP servers and custom modes. Existing
+# files are never overwritten. Without a template, nothing is created.
+install_bob_dir() {
+  local dir="$1" src rel target added=0
+  if [[ ! -d "$BOB_TEMPLATE" ]]; then
+    echo "⚠️ No Bob template at $BOB_TEMPLATE; .bob not created."
+    return 0
+  fi
+  while IFS= read -r src; do
+    rel="${src#"$BOB_TEMPLATE"/}"
+    target="$dir/.bob/$rel"
+    if [[ -e "$target" || -L "$target" ]]; then
+      continue
+    fi
+    mkdir -p "$(dirname "$target")"
+    cp -L "$src" "$target"
+    added=$((added + 1))
+  done < <(find "$BOB_TEMPLATE" -type f ! -name .DS_Store | sort)
+  echo "🤖 Bob ready in $dir ($added added)"
+}
+
 # Reject missing retrofit targets before changing global or project files.
 if [[ "$CODEX_ONLY" == true && ! -d "$CODEX_ONLY_DIR" ]]; then
   echo "❌ Not a directory: $CODEX_ONLY_DIR"
+  exit 1
+fi
+if [[ "$BOB_ONLY" == true && ! -d "$BOB_ONLY_DIR" ]]; then
+  echo "❌ Not a directory: $BOB_ONLY_DIR"
   exit 1
 fi
 if [[ "$CLAUDE_ONLY" == true && ! -d "$CLAUDE_ONLY_DIR" ]]; then
@@ -415,6 +482,22 @@ if [[ "$CODEX_ONLY" == true ]]; then
     fi
   fi
   install_codex_dir "$CODEX_ONLY_DIR" "$(basename "$CODEX_ONLY_DIR")" "$TYPE"
+  exit 0
+fi
+
+# 🔧 Retrofit mode: add or repair .bob in an existing project.
+if [[ "$BOB_ONLY" == true ]]; then
+  BOB_ONLY_DIR="$(cd "$BOB_ONLY_DIR" && pwd)"
+  if git -C "$BOB_ONLY_DIR" rev-parse --is-inside-work-tree &>/dev/null; then
+    exclude="$(git -C "$BOB_ONLY_DIR" rev-parse --git-path info/exclude)"
+    [[ "$exclude" = /* ]] || exclude="$BOB_ONLY_DIR/$exclude"
+    mkdir -p "$(dirname "$exclude")"
+    ensure_ai_ignored "$exclude"
+    if [[ -n "$(git -C "$BOB_ONLY_DIR" ls-files .bob)" ]]; then
+      echo "⚠️ Some .bob files are already tracked by git; ignore rules do not untrack them."
+    fi
+  fi
+  install_bob_dir "$BOB_ONLY_DIR"
   exit 0
 fi
 
@@ -903,10 +986,14 @@ if [[ "$USE_CODEX" == true ]]; then
   install_codex_dir "$PWD" "$PROJECT_NAME" "$TYPE"
 fi
 
+if [[ "$USE_BOB" == true ]]; then
+  install_bob_dir "$PWD"
+fi
+
 # 🧪 Run sanity_check on project files only (never on local tooling such as skill scripts)
 if command -v "$SANITY_CHECK_CMD" &>/dev/null; then
   echo "🧪 Running sanity_check..."
-  find . \( -path ./.git -o -path ./.claude -o -path ./.agents -o -path ./.codex -o -path ./.impeccable -o -name node_modules \) -prune -o \
+  find . \( -path ./.git -o -path ./.claude -o -path ./.agents -o -path ./.codex -o -path ./.bob -o -path ./.impeccable -o -name node_modules \) -prune -o \
     -type f \( -name "*.sh" -o -name "*.py" -o -name "*.js" -o -name "*.tf" -o -name "Dockerfile" -o -name "Containerfile" -o -name "*.go" \) \
     -exec "$SANITY_CHECK_CMD" --fix --report {} +
 else
@@ -936,7 +1023,7 @@ fi
 
 git add .
 # The first commit of a public repo must never carry local AI tooling.
-LEAKED="$(git diff --cached --name-only | grep -E '(^|/)(\.(claude|agents|codex|impeccable)/|AGENTS(\.override)?\.md$)' || true)"
+LEAKED="$(git diff --cached --name-only | grep -E '(^|/)(\.(claude|agents|codex|bob|impeccable)/|AGENTS(\.override)?\.md$)' || true)"
 if [[ -n "$LEAKED" ]]; then
   echo "❌ Refusing to commit local AI tooling:"
   echo "$LEAKED" | head -5

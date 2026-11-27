@@ -1,7 +1,7 @@
 # generate_project
 
 Scaffold a new project, commit it and publish it on GitHub in one command,
-with local Claude Code and Codex workspaces.
+with local Claude Code, Codex and Bob workspaces.
 
 ```sh
 generate_project --project f_Ray_grance --type node
@@ -11,7 +11,7 @@ This creates `./f_Ray_grance`: type-specific starter files, `.gitignore` and
 container ignore files from your global template, a GPL-3.0 `LICENSE`, `README.md`,
 an empty `.env`, Dependabot config, the matching `scan_on_pr` workflow, a
 `sanity_check` pre-commit hook, `.claude/`, root `AGENTS.md`,
-`.agents/skills/` and `.codex/config.toml`. It then makes the
+`.agents/skills/`, `.codex/config.toml` and `.bob/`. It then makes the
 first commit on `main` and creates the GitHub repository.
 
 If `--project` names an existing nonempty directory, `--type` adds only the
@@ -38,6 +38,9 @@ generate_project --project vault_lab_index --type node
 | `--no-codex` | Skip Codex files. |
 | `--codex-template <dir>` | Use another Codex template. |
 | `--codex-only [<dir>]` | Add or repair Codex support; accepts `--type` and `--prefix`. |
+| `--no-bob` | Skip the `.bob/` folder. |
+| `--bob-template <dir>` | Use another Bob template. |
+| `--bob-only [<dir>]` | Add or repair `.bob/` in an existing project. |
 
 ## The `.claude` folder
 
@@ -98,21 +101,42 @@ labels declared commands separately from checks actually run. Retrofit does
 not overwrite existing skills; it adds the bundled workflow if an older private
 or custom template does not provide it.
 
+## Bob support
+
+Bob reads the root `AGENTS.md` and `.agents/skills/` that Codex support
+already creates, so a new project works in Bob without extra copies. `.bob/`
+only holds what is Bob-specific: `mcp.json` (an empty `mcpServers` block) and
+`custom_modes.yaml` (an empty `customModes` list with a commented example).
+
+```sh
+generate_project --bob-only ./existing-project
+generate_project --project existing-project --bob-only
+```
+
+The template defaults to `~/.config/generate_project/bob/` if present, then the
+bundled `tpl/bob/`. Override it with `GENERATE_PROJECT_BOB_TEMPLATE` or
+`--bob-template`. Every file under the template is copied to `.bob/`, keeping
+its relative path, and existing files are never overwritten. See
+[Bob support](docs/bob-support.md) for what Bob discovers and why skills and
+rules are not copied.
+
 ## Keeping AI tooling private
 
-`.claude/`, `.agents/`, `.codex/`, `.impeccable/`, `AGENTS.md` and
+`.claude/`, `.agents/`, `.codex/`, `.bob/`, `.impeccable/`, `AGENTS.md` and
 `AGENTS.override.md` are added to the new
 project's `.gitignore` and `.dockerignore`, and to `~/.gitignore_global`
 (git's global excludes file on this Mac). The first commit refuses to proceed
 if any of them is staged. In `--claude-only` mode, a repository that does not
 ignore `.claude/` gets it in `.git/info/exclude`, which stays local.
-`--codex-only` also uses local Git excludes and warns about already tracked files.
+`--codex-only` and `--bob-only` also use local Git excludes and warn about
+already tracked files.
 
 ## Install
 
 ```sh
-mkdir -p ~/.config/generate_project/codex
+mkdir -p ~/.config/generate_project/codex ~/.config/generate_project/bob
 cp -R tpl/codex/. ~/.config/generate_project/codex/
+cp -R tpl/bob/. ~/.config/generate_project/bob/
 cp bin/generate_project.sh /usr/local/bin/generate_project
 cp .version /usr/local/bin/.version
 chmod 755 /usr/local/bin/generate_project
@@ -123,7 +147,7 @@ Requires `git`; publishing also needs an authenticated `gh`. `sanity_check`,
 The generator detects `commit_gh` (or copies its fallback), but its initial
 commit and GitHub publishing currently use `git` and `gh` directly.
 
-Homebrew installs the script, `.version`, and bundled Codex templates together
+Homebrew installs the script, `.version`, and the bundled Codex and Bob templates together
 using `Formula/generate-project.rb`. Its wrapper always uses Homebrew Bash.
 Install the published tap package with `brew install raymonepping/tap/generate-project`.
 

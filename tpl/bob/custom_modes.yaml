@@ -1,0 +1,15 @@
+# Project modes for Bob. Add one entry per mode under customModes.
+# slug: letters, digits and dashes only; keep it unique (a duplicate drops this whole file).
+# groups: read, edit, execute, mcp, skill, todo, subagent, mode (other names grant nothing).
+# Use plain ASCII: curly quotes and em dashes are stripped by the loader.
+#
+# customModes:
+#   - slug: reviewer
+#     name: Reviewer
+#     roleDefinition: >-
+#       You review changes read-only and report findings with file and line evidence.
+#     whenToUse: Use to review a diff before committing.
+#     groups:
+#       - read
+#       - skill
+customModes: []

@@ -1,5 +1,5 @@
 class GenerateProject < Formula
-  desc "Scaffold projects with local Claude Code and Codex workspaces"
+  desc "Scaffold projects with local Claude Code, Codex and Bob workspaces"
   homepage "https://github.com/raymonepping/generate_project"
   version "2.4.0"
   url "https://github.com/raymonepping/generate_project/archive/refs/tags/v2.4.0.tar.gz"
@@ -28,8 +28,12 @@ class GenerateProject < Formula
       Add Codex to an existing project:
         generate_project --codex-only . --type node
 
-      Codex templates are bundled. Personal overrides may be placed in:
+      Add Bob to an existing project:
+        generate_project --bob-only .
+
+      Codex and Bob templates are bundled. Personal overrides may be placed in:
         ~/.config/generate_project/codex/
+        ~/.config/generate_project/bob/
       Claude templates remain private and are loaded from:
         ~/.config/generate_project/claude/
 
@@ -40,7 +44,9 @@ class GenerateProject < Formula
   end
 
   test do
+    assert_equal "generate_project #{version}", shell_output("#{bin}/generate_project --version").strip
     assert_match "--codex-only", shell_output("#{bin}/generate_project --help")
+    assert_match "--bob-only", shell_output("#{bin}/generate_project --help")
     project = testpath/"existing"
     project.mkpath
     system bin/"generate_project", "--project", project, "--codex-only", "--type", "node", "--prefix", "brew"
@@ -49,6 +55,7 @@ class GenerateProject < Formula
     assert_match "`brew-`", (project/"AGENTS.md").read
     assert_path_exists project/".agents/skills/project-checks/SKILL.md"
     assert_path_exists project/".agents/skills/scoped-resources/SKILL.md"
+    assert_path_exists project/".agents/skills/project-context/SKILL.md"
     assert_path_exists project/".codex/config.toml"
 
     handwritten = testpath/"handwritten"
@@ -57,5 +64,11 @@ class GenerateProject < Formula
     system bin/"generate_project", "--codex-only", handwritten, "--prefix", "brew"
     assert_match "`brew-`", (handwritten/"AGENTS.md").read
     assert_match "- Keep this guidance.", (handwritten/"AGENTS.md").read
+
+    bob = testpath/"bob"
+    bob.mkpath
+    system bin/"generate_project", "--bob-only", bob
+    assert_match "mcpServers", (bob/".bob/mcp.json").read
+    assert_path_exists bob/".bob/custom_modes.yaml"
   end
 end

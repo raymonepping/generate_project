@@ -35,6 +35,7 @@ class GenerateProjectTests(unittest.TestCase):
             GIT_COMMITTER_NAME="Test",
             GIT_COMMITTER_EMAIL="test@example.invalid",
             GENERATE_PROJECT_CODEX_TEMPLATE=str(ROOT / "tpl/codex"),
+            GENERATE_PROJECT_BOB_TEMPLATE=str(ROOT / "tpl/bob"),
         )
 
     def run_command(self, args, cwd=None, ok=True):
@@ -228,6 +229,75 @@ class GenerateProjectTests(unittest.TestCase):
                         self.assertEqual(result, instructions.read_text())
                         if filename == "CLAUDE.md":
                             self.assertFalse((project / ".claude/CLAUDE.md").exists())
+
+    def test_new_projects_get_bob_files_that_never_reach_the_commit(self):
+        self.generate("--project", "bob-app", "--no-github", "--type", "node")
+        project = self.work / "bob-app"
+        self.assertEqual((project / ".bob/mcp.json").read_bytes(), (ROOT / "tpl/bob/mcp.json").read_bytes())
+        self.assertTrue((project / ".bob/custom_modes.yaml").is_file())
+        # Bob reads AGENTS.md and .agents/skills, so nothing is duplicated under .bob.
+        self.assertFalse((project / ".bob/skills").exists())
+        self.assertFalse((project / ".bob/rules").exists())
+        tracked = self.run_command(["git", "ls-files"], cwd=project).splitlines()
+        self.assertIn("README.md", tracked)
+        self.assertFalse(any(p.startswith(".bob/") for p in tracked))
+        self.run_command(["git", "check-ignore", ".bob/mcp.json", ".bob/custom_modes.yaml"], cwd=project)
+        self.assertIn(".bob/", (project / ".gitignore").read_text())
+        self.assertIn(".bob/", (project / ".dockerignore").read_text())
+        self.assertIn(".bob/", (self.work / "home/.gitignore_global").read_text())
+
+    def test_no_bob_skips_the_folder(self):
+        self.generate("--project", "no-bob", "--no-github", "--no-bob")
+        self.assertFalse((self.work / "no-bob/.bob").exists())
+
+    def test_bob_retrofit_preserves_edits_and_uses_local_excludes(self):
+        project = self.work / "existing"
+        project.mkdir()
+        self.run_command(["git", "init", "-q", "-b", "main"], cwd=project)
+        self.generate("--bob-only", str(project))
+        self.assertTrue((project / ".bob/mcp.json").is_file())
+        self.assertIn(".bob/", (project / ".git/info/exclude").read_text())
+        self.run_command(["git", "check-ignore", ".bob/mcp.json"], cwd=project)
+        # A second run keeps user edits and adds nothing.
+        (project / ".bob/mcp.json").write_text('{"mcpServers": {"mine": {"url": "https://example.invalid"}}}\n')
+        (project / ".bob/custom_modes.yaml").unlink()
+        output = self.generate("--bob-only", str(project))
+        self.assertIn("1 added", output)
+        self.assertIn('"mine"', (project / ".bob/mcp.json").read_text())
+        before = self.snapshot(project / ".bob")
+        output = self.generate("--bob-only", str(project))
+        self.assertIn("0 added", output)
+        self.assertEqual(before, self.snapshot(project / ".bob"))
+        self.assertEqual(1, (project / ".git/info/exclude").read_text().count(".bob/"))
+
+    def test_bob_project_flag_template_and_invalid_arguments(self):
+        project = self.work / "target"
+        project.mkdir()
+        self.generate("--project", str(project), "--bob-only")
+        self.assertTrue((project / ".bob/mcp.json").is_file())
+        custom = self.work / "custom bob"
+        (custom / "rules").mkdir(parents=True)
+        (custom / "rules/team.md").write_text("# Team\n")
+        other = self.work / "other"
+        other.mkdir()
+        self.generate("--bob-only", str(other), "--bob-template", str(custom))
+        self.assertEqual("# Team\n", (other / ".bob/rules/team.md").read_text())
+        self.assertFalse((other / ".bob/mcp.json").exists())
+        before = self.snapshot(self.work)
+        self.generate("--bob-only", "--no-bob", ok=False)
+        self.generate("--bob-only", "--codex-only", ok=False)
+        self.generate("--bob-only", "--claude-only", ok=False)
+        self.generate("--bob-only", str(project), "--project", str(project), ok=False)
+        self.generate("--bob-only", str(self.work / "missing"), ok=False)
+        self.assertEqual(before, self.snapshot(self.work))
+        self.assertFalse((self.work / "missing").exists())
+
+    def test_bob_missing_template_is_a_warning_not_an_error(self):
+        project = self.work / "bare"
+        project.mkdir()
+        output = self.generate("--bob-only", str(project), "--bob-template", str(self.work / "nope"))
+        self.assertIn("No Bob template", output)
+        self.assertFalse((project / ".bob").exists())
 
 
 if __name__ == "__main__":
